@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Web realtime plotter for M5Atom/BME688 CSV stream.
 
-Expected line format (6 columns):
-index,time,temp,humidity,pressure,current
+Expected line format (5 data columns + 1 checksum):
+index,temp,humidity,pressure,current,checksum
 
+The checksum is an XOR of all data characters (characters before the final comma).
 This script:
-- Reads serial CSV on Windows COM port
+- Reads serial CSV on Windows COM port and validates checksums
 - Logs received lines to Python/logs/yyyyMMdd_HHmmss.csv
 - Writes aggregated rows to Python/data/yyyyMMdd_HHmmss.csv on D9 timing
 - Prepends current timestamp as first column in the log
 - Serves browser UI with realtime chart
+- Graph x-axis uses sequential counter (sample index)
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 import threading
+import time
 from collections import defaultdict, deque
 from typing import Deque, Dict, List, Tuple
 
@@ -63,6 +66,10 @@ class SharedState:
         self.baseline: Dict[int, float] | None = None
         self.reset_at: float | None = None
         self.reset_at_text: str | None = None
+        self.ser_ref: serial.Serial | None = None
+        self.id_event = threading.Event()
+        self.id_response: str | None = None
+        self.start_time: datetime | None = None  # First data reception time for relative time calculation
 
 
 def available_ports() -> List[str]:
@@ -89,29 +96,38 @@ def select_port_interactive() -> str:
         print("Out of range.")
 
 
-def parse_line(line: str) -> Tuple[int, float, float, float, float, float] | None:
+def parse_line(line: str) -> Tuple[int, float, float, float, float] | None:
     parts = line.strip().split(",")
-    if len(parts) < 6:
+    if len(parts) < 6:  # 5 data columns + 1 checksum
         return None
 
     try:
         channel = int(parts[0])
-        t_ms = float(parts[1])
-        temp = float(parts[2])
-        humidity = float(parts[3])
-        pressure = float(parts[4])
-        current = float(parts[5])
-    except ValueError:
+        temp = float(parts[1])
+        humidity = float(parts[2])
+        pressure = float(parts[3])
+        current = float(parts[4])
+        received_checksum = parts[5].upper()
+    except (ValueError, IndexError):
         return None
 
     if not (0 <= channel <= 9):
         return None
 
-    return channel, t_ms, temp, humidity, pressure, current
+    # Verify checksum: XOR of all data characters
+    data_str = ",".join(parts[:5])
+    calculated_checksum = 0
+    for c in data_str:
+        calculated_checksum ^= ord(c)
+    
+    # Checksum should match (case-insensitive hex)
+    if f"{calculated_checksum:X}" != received_checksum:
+        return None
+
+    return channel, temp, humidity, pressure, current
 
 
 def serial_reader(port: str, baudrate: int, state: SharedState) -> None:
-    base_ms: float | None = None
     log_file, data_file = create_output_files()
     state.log_file = str(log_file)
     state.data_file = str(data_file)
@@ -121,63 +137,112 @@ def serial_reader(port: str, baudrate: int, state: SharedState) -> None:
     d0_temp: float | None = None
     d0_humidity: float | None = None
     d0_pressure: float | None = None
+    
+    retry_count = 0
+    max_retries = 10
+    base_retry_delay = 1.0  # seconds
 
-    try:
-        with serial.Serial(port=port, baudrate=baudrate, timeout=1) as ser:
+    # Outer loop: reconnection loop
+    while not state.stop_event.is_set():
+        try:
             state.running = True
-            with log_file.open("a", encoding="utf-8", newline="") as log_fp, data_file.open("a", encoding="utf-8", newline="") as data_fp:
-                while not state.stop_event.is_set():
-                    raw = ser.readline()
-                    if not raw:
-                        continue
-                    line = raw.decode("utf-8", errors="ignore")
-                    parsed = parse_line(line)
-                    if parsed is None:
-                        continue
+            state.error_message = ""
+            
+            with serial.Serial(port=port, baudrate=baudrate, timeout=1) as ser:
+                state.ser_ref = ser
+                retry_count = 0  # Reset retry count on successful connection
+                print(f"[{now_text()}] Connected to {port}")
+                
+                with log_file.open("a", encoding="utf-8", newline="") as log_fp, data_file.open("a", encoding="utf-8", newline="") as data_fp:
+                    # Inner loop: data reading loop
+                    while not state.stop_event.is_set():
+                        try:
+                            raw = ser.readline()
+                            if not raw:
+                                continue
+                            line = raw.decode("utf-8", errors="ignore")
+                            line_clean = line.strip()
 
-                    line_clean = line.strip()
-                    if line_clean:
-                        log_fp.write(f"{now_text()},{line_clean}\n")
-                        log_fp.flush()
+                            # Handle ID response from Arduino
+                            if line_clean.startswith("ID,"):
+                                state.id_response = line_clean
+                                state.id_event.set()
+                                continue
 
-                    channel, t_ms, temp, humidity, pressure, value = parsed
-                    if base_ms is None:
-                        base_ms = t_ms
-                    t_sec = (t_ms - base_ms) / 1000.0
+                            parsed = parse_line(line)
+                            if parsed is None:
+                                continue
 
-                    last_values[channel] = value
+                            if line_clean:
+                                log_fp.write(f"{now_text()},{line_clean}\n")
+                                log_fp.flush()
 
-                    if channel == 0:
-                        d0_datetime = now_text()
-                        d0_temp = temp
-                        d0_humidity = humidity
-                        d0_pressure = pressure
+                            channel, temp, humidity, pressure, value = parsed
+                            
+                            # Calculate relative time (seconds) from first data reception
+                            now = datetime.now()
+                            if state.start_time is None:
+                                state.start_time = now
+                            t_sec = (now - state.start_time).total_seconds()
 
-                    if (
-                        channel == 9
-                        and len(last_values) == 10
-                        and d0_datetime
-                        and d0_temp is not None
-                        and d0_humidity is not None
-                        and d0_pressure is not None
-                    ):
-                        # Emit one aggregated row when D9 arrives; missing channels
-                        # in the current cycle are naturally filled by retained values.
-                        row = [
-                            d0_datetime,
-                            f"{d0_temp:.2f}",
-                            f"{d0_humidity:.2f}",
-                            f"{d0_pressure:.2f}",
-                        ] + [f"{last_values[d]:.3f}" for d in range(10)]
-                        data_fp.write(",".join(row) + "\n")
-                        data_fp.flush()
+                            last_values[channel] = value
 
-                    with state.lock:
-                        state.data[channel].append((t_sec, value))
-    except Exception as exc:
-        state.error_message = str(exc)
-    finally:
-        state.running = False
+                            if channel == 0:
+                                d0_datetime = now_text()
+                                d0_temp = temp
+                                d0_humidity = humidity
+                                d0_pressure = pressure
+
+                            if (
+                                channel == 9
+                                and len(last_values) == 10
+                                and d0_datetime
+                                and d0_temp is not None
+                                and d0_humidity is not None
+                                and d0_pressure is not None
+                            ):
+                                # Emit one aggregated row when D9 arrives; missing channels
+                                # in the current cycle are naturally filled by retained values.
+                                row = [
+                                    d0_datetime,
+                                    f"{d0_temp:.2f}",
+                                    f"{d0_humidity:.2f}",
+                                    f"{d0_pressure:.2f}",
+                                ] + [f"{last_values[d]:.3f}" for d in range(10)]
+                                data_fp.write(",".join(row) + "\n")
+                                data_fp.flush()
+
+                            with state.lock:
+                                state.data[channel].append((t_sec, value))
+                        except Exception as read_exc:
+                            print(f"[{now_text()}] Serial read error: {read_exc}")
+                            state.error_message = f"Serial read error: {read_exc}"
+                            raise  # Trigger reconnection
+        except Exception as exc:
+            state.ser_ref = None
+            state.running = False
+            
+            # Handle reconnection logic
+            if state.stop_event.is_set():
+                break
+                
+            retry_count += 1
+            if retry_count > max_retries:
+                error_msg = f"Failed to connect after {max_retries} retries: {exc}"
+                print(f"[{now_text()}] {error_msg}")
+                state.error_message = error_msg
+                state.running = False
+                break
+            
+            # Exponential backoff with cap
+            wait_time = min(base_retry_delay * (2 ** (retry_count - 1)), 30.0)
+            print(f"[{now_text()}] Connection lost ({exc}). Retrying in {wait_time:.1f}s (attempt {retry_count}/{max_retries})...")
+            state.error_message = f"Reconnecting... (attempt {retry_count}/{max_retries})"
+            
+            time.sleep(wait_time)
+        finally:
+            state.ser_ref = None
+            state.running = False
 
 
 def create_app(state: SharedState, serial_port: str, update_ms: int) -> Flask:
@@ -228,6 +293,23 @@ def create_app(state: SharedState, serial_port: str, update_ms: int) -> Flask:
                 "channels": channels,
             }
         )
+
+    @app.get("/id")
+    def id_api():
+        ser = state.ser_ref
+        if ser is None or not state.running:
+            return jsonify({"ok": False, "message": "Serial not connected"}), 503
+        state.id_response = None
+        state.id_event.clear()
+        try:
+            ser.write(b"id\n")
+        except Exception as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 500
+        if state.id_event.wait(timeout=3.0):
+            parts = (state.id_response or "").split(",", 1)
+            uid = parts[1] if len(parts) == 2 else ""
+            return jsonify({"ok": True, "id": uid})
+        return jsonify({"ok": False, "message": "Timeout waiting for response"}), 504
 
     @app.post("/reset")
     def reset_api():

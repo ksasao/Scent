@@ -68,6 +68,7 @@
         <div class="card">
             <h1>BME688 Realtime Graph</h1>
             <div class="meta">
+                <div>Sensor ID: <span id="sensorid">-</span></div>
                 <div>Serial: <span id="serial"></span></div>
                 <div>Log file: <span id="logfile"></span></div>
                 <div>Status: <span id="status"></span></div>
@@ -351,6 +352,24 @@
 
         setInterval(refresh, {{ update_ms }});
         refresh();
+
+        async function fetchSensorId() {
+            try {
+                const resp = await fetch('/id');
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+                const payload = await resp.json();
+                if (payload.ok) {
+                    document.getElementById('sensorid').textContent = '0x' + payload.id.toUpperCase().padStart(8, '0');
+                } else {
+                    document.getElementById('sensorid').textContent = `error: ${payload.message}`;
+                }
+            } catch (err) {
+                document.getElementById('sensorid').textContent = `error: ${err.message}`;
+            }
+        }
+        fetchSensorId();
     </script>
 </body>
 </html>
