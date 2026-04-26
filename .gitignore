@@ -22,6 +22,9 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+**/[Ll]og/**
+[Dd]ata/
+**/[Dd]ata/**
 
 # .NET Core
 project.lock.json
@@ -38,6 +41,10 @@ ScaffoldingReadMe.txt
 
 # dotenv environment variables file
 .env
+
+# Python virtual environment
+venv/
+.venv/
 
 # Others
 ~$*

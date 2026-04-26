@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BME688 Realtime Plot</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #f3f6f9;
+            --card: #ffffff;
+            --ink: #1b2a3a;
+            --accent: #007a6c;
+            --muted: #5b6b7b;
+            --border: #d7e0e8;
+        }
+        body {
+            margin: 0;
+            background: radial-gradient(circle at 0% 0%, #dff4f1 0%, var(--bg) 45%);
+            color: var(--ink);
+            font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+        }
+        .wrap {
+            max-width: 1100px;
+            margin: 24px auto;
+            padding: 0 16px;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: 0 10px 28px rgba(27, 42, 58, 0.08);
+        }
+        h1 {
+            margin: 0 0 12px;
+            font-size: 1.35rem;
+        }
+        .meta {
+            color: var(--muted);
+            font-size: 0.95rem;
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+        .canvas-wrap {
+            height: 62vh;
+            min-height: 320px;
+        }
+        .toolbar {
+            margin-bottom: 12px;
+        }
+        .btn {
+            border: 1px solid var(--border);
+            background: #e8f7f4;
+            color: var(--ink);
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #daf1ec;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <h1>BME688 Realtime Graph</h1>
+            <div class="meta">
+                <div>Serial: <span id="serial"></span></div>
+                <div>Log file: <span id="logfile"></span></div>
+                <div>Status: <span id="status"></span></div>
+                <div>Mode: <span id="mode">raw</span></div>
+                <div>Reset at: <span id="resetat">-</span></div>
+            </div>
+            <div class="toolbar">
+                <button id="resetBtn" class="btn" type="button">Reset</button>
+            </div>
+            <div class="canvas-wrap">
+                <canvas id="chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const colors = [
+            '#e63946', '#f4a261', '#ffb703', '#2a9d8f', '#00a6fb',
+            '#4361ee', '#7b2cbf', '#8338ec', '#ff006e', '#6c757d'
+        ];
+
+        const datasets = Array.from({ length: 10 }, (_, ch) => ({
+            label: `D${ch}`,
+            data: [],
+            borderColor: colors[ch],
+            backgroundColor: colors[ch],
+            pointRadius: 0,
+            tension: 0,
+            borderWidth: 2,
+        }));
+
+        const ctx = document.getElementById('chart');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                parsing: false,
+                animation: false,
+                scales: {
+                    x: {
+                        type: 'linear',
+                        title: { display: true, text: 'Time [s] (relative)' }
+                    },
+                    y: {
+                        title: { display: true, text: 'Current value (or delta after Reset)' }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+
+        let xAutoRange = true;
+        let isPanning = false;
+        let lastPanX = 0;
+
+        function getDataBoundsX() {
+            let minX = null;
+            let maxX = null;
+            for (const ds of datasets) {
+                for (const p of ds.data) {
+                    if (typeof p.x !== 'number') {
+                        continue;
+                    }
+                    minX = (minX === null) ? p.x : Math.min(minX, p.x);
+                    maxX = (maxX === null) ? p.x : Math.max(maxX, p.x);
+                }
+            }
+            return { minX, maxX };
+        }
+
+        function getPixelXFromEvent(event) {
+            const rect = ctx.getBoundingClientRect();
+            return event.clientX - rect.left;
+        }
+
+        function onWheelZoom(event) {
+            event.preventDefault();
+
+            const xScale = chart.scales.x;
+            if (!xScale) {
+                return;
+            }
+
+            const pixelX = getPixelXFromEvent(event);
+            const centerX = xScale.getValueForPixel(pixelX);
+            if (typeof centerX !== 'number' || Number.isNaN(centerX)) {
+                return;
+            }
+
+            const { minX: dataMin, maxX: dataMax } = getDataBoundsX();
+            if (dataMin === null || dataMax === null) {
+                return;
+            }
+
+            const currentMin = (typeof xScale.min === 'number') ? xScale.min : dataMin;
+            const currentMax = (typeof xScale.max === 'number') ? xScale.max : dataMax;
+            const currentRange = currentMax - currentMin;
+            if (currentRange <= 0) {
+                return;
+            }
+
+            const zoomIn = event.deltaY < 0;
+            const factor = zoomIn ? 0.85 : 1.15;
+            let nextMin = centerX - (centerX - currentMin) * factor;
+            let nextMax = centerX + (currentMax - centerX) * factor;
+
+            const minRange = 0.2;
+            if (nextMax - nextMin < minRange) {
+                const half = minRange / 2;
+                nextMin = centerX - half;
+                nextMax = centerX + half;
+            }
+
+            if (nextMin < dataMin) {
+                const shift = dataMin - nextMin;
+                nextMin += shift;
+                nextMax += shift;
+            }
+            if (nextMax > dataMax) {
+                const shift = nextMax - dataMax;
+                nextMin -= shift;
+                nextMax -= shift;
+            }
+
+            nextMin = Math.max(nextMin, dataMin);
+            nextMax = Math.min(nextMax, dataMax);
+            if (nextMax - nextMin < minRange) {
+                nextMin = dataMin;
+                nextMax = dataMax;
+            }
+
+            const fullRangeEps = 1e-6;
+            const isFullRange =
+                Math.abs(nextMin - dataMin) <= fullRangeEps &&
+                Math.abs(nextMax - dataMax) <= fullRangeEps;
+
+            if (!zoomIn && isFullRange) {
+                xAutoRange = true;
+                chart.options.scales.x.min = undefined;
+                chart.options.scales.x.max = undefined;
+            } else {
+                xAutoRange = false;
+                chart.options.scales.x.min = nextMin;
+                chart.options.scales.x.max = nextMax;
+            }
+            chart.update('none');
+        }
+
+        ctx.addEventListener('wheel', onWheelZoom, { passive: false });
+
+        function onPanStart(event) {
+            if (event.button !== 0) {
+                return;
+            }
+            isPanning = true;
+            lastPanX = getPixelXFromEvent(event);
+            ctx.style.cursor = 'grabbing';
+            event.preventDefault();
+        }
+
+        function onPanMove(event) {
+            if (!isPanning) {
+                return;
+            }
+
+            const xScale = chart.scales.x;
+            if (!xScale) {
+                return;
+            }
+
+            const { minX: dataMin, maxX: dataMax } = getDataBoundsX();
+            if (dataMin === null || dataMax === null) {
+                return;
+            }
+
+            const currentPixelX = getPixelXFromEvent(event);
+            const currentMin = (typeof xScale.min === 'number') ? xScale.min : dataMin;
+            const currentMax = (typeof xScale.max === 'number') ? xScale.max : dataMax;
+            const currentRange = currentMax - currentMin;
+            if (currentRange <= 0 || currentRange >= (dataMax - dataMin)) {
+                lastPanX = currentPixelX;
+                return;
+            }
+
+            const prevValue = xScale.getValueForPixel(lastPanX);
+            const currValue = xScale.getValueForPixel(currentPixelX);
+            if (typeof prevValue !== 'number' || typeof currValue !== 'number') {
+                lastPanX = currentPixelX;
+                return;
+            }
+
+            const deltaValue = currValue - prevValue;
+            let nextMin = currentMin - deltaValue;
+            let nextMax = currentMax - deltaValue;
+
+            if (nextMin < dataMin) {
+                const shift = dataMin - nextMin;
+                nextMin += shift;
+                nextMax += shift;
+            }
+            if (nextMax > dataMax) {
+                const shift = nextMax - dataMax;
+                nextMin -= shift;
+                nextMax -= shift;
+            }
+
+            xAutoRange = false;
+            chart.options.scales.x.min = nextMin;
+            chart.options.scales.x.max = nextMax;
+            chart.update('none');
+            lastPanX = currentPixelX;
+            event.preventDefault();
+        }
+
+        function onPanEnd() {
+            isPanning = false;
+            ctx.style.cursor = 'default';
+        }
+
+        ctx.addEventListener('mousedown', onPanStart);
+        ctx.addEventListener('mousemove', onPanMove);
+        window.addEventListener('mouseup', onPanEnd);
+        ctx.addEventListener('mouseleave', onPanEnd);
+
+        async function doReset() {
+            try {
+                const resp = await fetch('/reset', { method: 'POST' });
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+
+                xAutoRange = true;
+                isPanning = false;
+                ctx.style.cursor = 'default';
+                chart.options.scales.x.min = undefined;
+                chart.options.scales.x.max = undefined;
+                for (const ds of datasets) {
+                    ds.data = [];
+                }
+                chart.update('none');
+
+                await refresh();
+            } catch (err) {
+                document.getElementById('status').textContent = `error: ${err.message}`;
+            }
+        }
+        document.getElementById('resetBtn').addEventListener('click', doReset);
+
+        async function refresh() {
+            try {
+                const resp = await fetch('/data');
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+                const payload = await resp.json();
+
+                document.getElementById('serial').textContent = payload.serial_port;
+                document.getElementById('logfile').textContent = payload.log_file || '-';
+                document.getElementById('status').textContent = payload.status;
+                document.getElementById('mode').textContent = payload.mode || 'raw';
+                document.getElementById('resetat').textContent = payload.reset_at ?? '-';
+
+                for (let ch = 0; ch < 10; ch += 1) {
+                    const key = String(ch);
+                    datasets[ch].data = payload.channels[key] || [];
+                }
+
+                if (xAutoRange) {
+                    chart.options.scales.x.min = undefined;
+                    chart.options.scales.x.max = undefined;
+                }
+                chart.update('none');
+            } catch (err) {
+                document.getElementById('status').textContent = `error: ${err.message}`;
+            }
+        }
+
+        setInterval(refresh, {{ update_ms }});
+        refresh();
+    </script>
+</body>
+</html>
