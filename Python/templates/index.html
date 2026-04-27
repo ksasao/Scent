@@ -61,6 +61,39 @@
         .btn:hover {
             background: #daf1ec;
         }
+        .port-control {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .port-control select {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.95rem;
+        }
+        .port-control .btn {
+            padding: 6px 12px;
+            font-size: 0.9rem;
+        }
+        .comm-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .comm-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            background: #d64545;
+            box-shadow: 0 0 0 2px rgba(214, 69, 69, 0.2);
+        }
+        .comm-dot.ok {
+            background: #2a9d49;
+            box-shadow: 0 0 0 2px rgba(42, 157, 73, 0.2);
+        }
     </style>
 </head>
 <body>
@@ -69,11 +102,18 @@
             <h1>BME688 Realtime Graph</h1>
             <div class="meta">
                 <div>Sensor ID: <span id="sensorid">-</span></div>
-                <div>Serial: <span id="serial"></span></div>
-                <div>Log file: <span id="logfile"></span></div>
-                <div>Status: <span id="status"></span></div>
+                <div>Serial port: <span id="serial">-</span></div>
+                <div>Status: <span id="status">-</span></div>
+                <div>Communication: <span class="comm-indicator"><span id="commdot" class="comm-dot"></span><span id="commtext">abnormal</span></span></div>
+                <div>Log file: <span id="logfile">-</span></div>
                 <div>Mode: <span id="mode">raw</span></div>
                 <div>Reset at: <span id="resetat">-</span></div>
+            </div>
+            <div class="port-control">
+                <select id="portSelect">
+                    <option value="">-- Select COM Port --</option>
+                </select>
+                <button id="connToggleBtn" class="btn" type="button">Connect</button>
             </div>
             <div class="toolbar">
                 <button id="resetBtn" class="btn" type="button">Reset</button>
@@ -334,6 +374,9 @@
                 document.getElementById('status').textContent = payload.status;
                 document.getElementById('mode').textContent = payload.mode || 'raw';
                 document.getElementById('resetat').textContent = payload.reset_at ?? '-';
+                isConnected = !!payload.running;
+                updateToggleButton();
+                updateCommIndicator(!!payload.comm_ok);
 
                 for (let ch = 0; ch < 10; ch += 1) {
                     const key = String(ch);
@@ -347,11 +390,133 @@
                 chart.update('none');
             } catch (err) {
                 document.getElementById('status').textContent = `error: ${err.message}`;
+                updateCommIndicator(false);
             }
         }
 
         setInterval(refresh, {{ update_ms }});
         refresh();
+
+        // Port management functions
+        let lastPortList = [];
+        let isConnected = false;
+
+        function updateCommIndicator(isOk) {
+            const dot = document.getElementById('commdot');
+            const text = document.getElementById('commtext');
+            if (!dot || !text) return;
+            if (isOk) {
+                dot.classList.add('ok');
+                text.textContent = 'normal';
+            } else {
+                dot.classList.remove('ok');
+                text.textContent = 'abnormal';
+            }
+        }
+
+        function updateToggleButton() {
+            const btn = document.getElementById('connToggleBtn');
+            const select = document.getElementById('portSelect');
+            if (!btn) return;
+            btn.textContent = isConnected ? 'Disconnect' : 'Connect';
+            if (select) {
+                select.disabled = isConnected;
+            }
+        }
+
+        async function refreshPortList() {
+            try {
+                const resp = await fetch('/api/ports');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                
+                const select = document.getElementById('portSelect');
+                if (!select) {
+                    console.error('portSelect element not found');
+                    return;
+                }
+                const prevValue = select.value;  // Save current selection
+                
+                // Build the port list with default option
+                const newPortList = data.ports || [];
+                
+                // Check if port list changed
+                const listChanged = JSON.stringify(lastPortList) !== JSON.stringify(newPortList);
+                
+                if (listChanged) {
+                    // Only update DOM if ports have changed
+                    select.innerHTML = '<option value="">-- Select COM Port --</option>';
+                    newPortList.forEach(port => {
+                        const option = document.createElement('option');
+                        option.value = port;
+                        option.textContent = port;
+                        select.appendChild(option);
+                    });
+                    lastPortList = newPortList;
+                }
+                
+                // Restore server-side port if connected, otherwise keep user selection
+                if (data.current && newPortList.includes(data.current)) {
+                    select.value = data.current;
+                } else if (prevValue && newPortList.includes(prevValue)) {
+                    select.value = prevValue;
+                } else {
+                    select.value = '';
+                }
+            } catch (err) {
+                console.error('Failed to refresh ports:', err);
+            }
+        }
+
+        async function connectPort() {
+            const port = document.getElementById('portSelect').value;
+            if (!port) {
+                alert('Please select a COM port');
+                return;
+            }
+            try {
+                const resp = await fetch(`/api/connect/${encodeURIComponent(port)}`, { method: 'POST' });
+                if (!resp.ok) {
+                    const data = await resp.json();
+                    throw new Error(data.message || `HTTP ${resp.status}`);
+                }
+                const data = await resp.json();
+                console.log(data.message);
+                await refresh();
+            } catch (err) {
+                alert(`Connection failed: ${err.message}`);
+                document.getElementById('status').textContent = `error: ${err.message}`;
+                updateCommIndicator(false);
+            }
+        }
+
+        async function disconnectPort() {
+            try {
+                const resp = await fetch('/api/disconnect', { method: 'POST' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                console.log('Disconnection requested');
+                await refresh();
+            } catch (err) {
+                alert(`Disconnection failed: ${err.message}`);
+                document.getElementById('status').textContent = `error: ${err.message}`;
+                updateCommIndicator(false);
+            }
+        }
+
+        async function toggleConnection() {
+            if (isConnected) {
+                await disconnectPort();
+            } else {
+                await connectPort();
+            }
+        }
+
+        // Port control buttons
+        document.getElementById('connToggleBtn').addEventListener('click', toggleConnection);
+
+        // Refresh port list periodically
+        refreshPortList();
+        setInterval(refreshPortList, 2000);
 
         async function fetchSensorId() {
             try {

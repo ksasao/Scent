@@ -82,6 +82,30 @@ def now_text() -> str:
     return datetime.now().strftime("%Y/%m/%d %H:%M:%S.%f")[:-3]
 
 
+def last_good_port_file() -> Path:
+    return Path(__file__).resolve().parent / "last_good_port.txt"
+
+
+def load_last_good_port() -> str | None:
+    path = last_good_port_file()
+    try:
+        if not path.exists():
+            return None
+        port = path.read_text(encoding="utf-8").strip()
+        return port or None
+    except Exception:
+        return None
+
+
+def save_last_good_port(port: str) -> None:
+    path = last_good_port_file()
+    try:
+        path.write_text(port, encoding="utf-8")
+    except Exception:
+        # Persistence failure should not interrupt acquisition.
+        pass
+
+
 class SharedState:
     def __init__(self, max_points: int) -> None:
         self.data: Dict[int, Deque[Point]] = defaultdict(lambda: deque(maxlen=max_points))
@@ -98,30 +122,14 @@ class SharedState:
         self.id_event = threading.Event()
         self.id_response: str | None = None
         self.start_time: datetime | None = None  # First data reception time for relative time calculation
+        self.requested_port: str | None = None  # Requested port to connect to
+        self.port_change_event = threading.Event()  # Signal port change request
+        self.last_rx_monotonic: float | None = None  # Last valid data reception time (monotonic)
+        self.connected_monotonic: float | None = None  # Serial open time (monotonic)
 
 
 def available_ports() -> List[str]:
     return [p.device for p in list_ports.comports()]
-
-
-def select_port_interactive() -> str:
-    ports = available_ports()
-    if not ports:
-        raise RuntimeError("No serial ports found.")
-
-    print("Available COM ports:")
-    for i, p in enumerate(ports, start=1):
-        print(f"  {i}: {p}")
-
-    while True:
-        choice = input("Select port number: ").strip()
-        if not choice.isdigit():
-            print("Please enter a number.")
-            continue
-        idx = int(choice)
-        if 1 <= idx <= len(ports):
-            return ports[idx - 1]
-        print("Out of range.")
 
 
 def parse_line(line: str) -> Tuple[int, float, float, float, float] | None:
@@ -153,10 +161,14 @@ def parse_line(line: str) -> Tuple[int, float, float, float, float] | None:
     return channel, temp, humidity, pressure, current
 
 
-def serial_reader(port: str, baudrate: int, state: SharedState) -> None:
+def serial_reader(port: str | None, baudrate: int, state: SharedState) -> None:
     log_file, data_file = create_output_files()
     state.log_file = str(log_file)
     state.data_file = str(data_file)
+    
+    # Set initial port if provided
+    if port:
+        state.requested_port = port
 
     last_values: Dict[int, float] = {}
     d0_datetime = ""
@@ -170,19 +182,37 @@ def serial_reader(port: str, baudrate: int, state: SharedState) -> None:
 
     # Outer loop: reconnection loop
     while not state.stop_event.is_set():
+        # Wait for requested port if not set
+        current_port = state.requested_port
+        if not current_port:
+            time.sleep(0.5)
+            continue
+        
         try:
             state.running = True
             state.error_message = ""
             
-            with serial.Serial(port=port, baudrate=baudrate, timeout=1) as ser:
+            with serial.Serial(port=current_port, baudrate=baudrate, timeout=1) as ser:
                 state.ser_ref = ser
+                state.connected_monotonic = time.monotonic()
+                state.last_rx_monotonic = None
+                port_marked_good = False
                 retry_count = 0  # Reset retry count on successful connection
-                print(f"[{now_text()}] Connected to {port}")
+                print(f"[{now_text()}] Connected to {current_port}")
                 
                 with log_file.open("a", encoding="utf-8", newline="") as log_fp, data_file.open("a", encoding="utf-8", newline="") as data_fp:
                     # Inner loop: data reading loop
                     while not state.stop_event.is_set():
                         try:
+                            # Stop reading immediately when disconnect or port switch is requested.
+                            if state.requested_port != current_port:
+                                next_port = state.requested_port
+                                if next_port is None:
+                                    print(f"[{now_text()}] Disconnected from {current_port}")
+                                else:
+                                    print(f"[{now_text()}] Port switch requested: {current_port} -> {next_port}")
+                                break
+
                             raw = ser.readline()
                             if not raw:
                                 continue
@@ -204,6 +234,10 @@ def serial_reader(port: str, baudrate: int, state: SharedState) -> None:
                                 log_fp.flush()
 
                             channel, temp, humidity, pressure, value = parsed
+                            state.last_rx_monotonic = time.monotonic()
+                            if not port_marked_good:
+                                save_last_good_port(current_port)
+                                port_marked_good = True
                             
                             # Calculate relative time (seconds) from first data reception
                             now = datetime.now()
@@ -258,7 +292,12 @@ def serial_reader(port: str, baudrate: int, state: SharedState) -> None:
                 print(f"[{now_text()}] {error_msg}")
                 state.error_message = error_msg
                 state.running = False
-                break
+                # Reset port and wait for user to select a new one
+                state.requested_port = None
+                retry_count = 0
+                print(f"[{now_text()}] Waiting for new port selection...")
+                time.sleep(1.0)
+                continue
             
             # Exponential backoff with cap
             wait_time = min(base_retry_delay * (2 ** (retry_count - 1)), 30.0)
@@ -269,9 +308,10 @@ def serial_reader(port: str, baudrate: int, state: SharedState) -> None:
         finally:
             state.ser_ref = None
             state.running = False
+            state.connected_monotonic = None
 
 
-def create_app(state: SharedState, serial_port: str, update_ms: int) -> Flask:
+def create_app(state: SharedState, update_ms: int) -> Flask:
     template_dir = Path(__file__).resolve().parent / "templates"
     app = Flask(__name__, template_folder=str(template_dir))
 
@@ -281,6 +321,9 @@ def create_app(state: SharedState, serial_port: str, update_ms: int) -> Flask:
 
     @app.get("/data")
     def data_api():
+        now_mono = time.monotonic()
+        comm_timeout_s = 6.0
+        connect_grace_s = 6.0
         with state.lock:
             if state.baseline is None or state.reset_at is None:
                 channels = {
@@ -302,6 +345,9 @@ def create_app(state: SharedState, serial_port: str, update_ms: int) -> Flask:
                     ]
                 mode = "delta"
             reset_at_text = state.reset_at_text
+            running = state.running
+            last_rx = state.last_rx_monotonic
+            connected_at = state.connected_monotonic
         if state.error_message:
             status = f"error: {state.error_message}"
         elif state.running:
@@ -309,11 +355,24 @@ def create_app(state: SharedState, serial_port: str, update_ms: int) -> Flask:
         else:
             status = "stopped"
 
+        # Communication is healthy when serial is running and data is recent.
+        # During connection warm-up, keep it healthy for a short grace period.
+        if not running:
+            comm_ok = False
+        elif last_rx is not None:
+            comm_ok = (now_mono - last_rx) <= comm_timeout_s
+        elif connected_at is not None:
+            comm_ok = (now_mono - connected_at) <= connect_grace_s
+        else:
+            comm_ok = False
+
         return jsonify(
             {
-                "serial_port": serial_port,
+                "serial_port": state.requested_port or "-",
                 "log_file": state.log_file,
                 "status": status,
+                "running": running,
+                "comm_ok": comm_ok,
                 "mode": mode,
                 "reset_at": reset_at_text,
                 "channels": channels,
@@ -364,6 +423,40 @@ def create_app(state: SharedState, serial_port: str, update_ms: int) -> Flask:
 
         return jsonify({"ok": True, "reset_at": state.reset_at_text})
 
+    @app.get("/api/ports")
+    def api_ports():
+        """Return list of available COM ports"""
+        try:
+            ports = available_ports()
+            return jsonify({"ok": True, "ports": ports, "current": state.requested_port})
+        except Exception as exc:
+            return jsonify({"ok": False, "message": str(exc)}), 500
+
+    @app.post("/api/connect/<port>")
+    def api_connect(port: str):
+        """Connect to specified COM port"""
+        # Validate port is in available ports
+        available = available_ports()
+        if port not in available:
+            return jsonify({"ok": False, "message": f"Port {port} not available"}), 400
+        
+        state.requested_port = port
+        print(f"[{now_text()}] Connection requested to {port}")
+        return jsonify({"ok": True, "message": f"Connecting to {port}"})
+
+    @app.post("/api/disconnect")
+    def api_disconnect():
+        """Disconnect from current COM port"""
+        state.requested_port = None
+        ser = state.ser_ref
+        if ser is not None:
+            try:
+                ser.close()
+            except Exception:
+                pass
+        print(f"[{now_text()}] Disconnection requested")
+        return jsonify({"ok": True, "message": "Disconnecting"})
+
     return app
 
 
@@ -382,7 +475,14 @@ def main() -> None:
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    serial_port = args.port or select_port_interactive()
+    serial_port = args.port
+    if serial_port is None:
+        remembered = load_last_good_port()
+        if remembered and remembered in available_ports():
+            serial_port = remembered
+            print(f"[{now_text()}] Auto-selected last good port: {serial_port}")
+        else:
+            print(f"[{now_text()}] No startup port selected. Please choose a COM port from the Web UI.")
 
     state = SharedState(max_points=args.max_points)
     reader = threading.Thread(
@@ -392,8 +492,9 @@ def main() -> None:
     )
     reader.start()
 
-    app = create_app(state=state, serial_port=serial_port, update_ms=args.update_ms)
-    print(f"Serial: {serial_port} @ {args.baudrate} bps")
+    app = create_app(state=state, update_ms=args.update_ms)
+    serial_text = serial_port if serial_port else "(not selected)"
+    print(f"Serial: {serial_text} @ {args.baudrate} bps")
     print(f"Web UI: http://{args.host}:{args.web_port}")
     print("Press Ctrl+C to stop.")
 

@@ -80,12 +80,17 @@ cd Python
 python serial_plot.py --port COM3 --baudrate 115200 --host 127.0.0.1 --web-port 5000
 ```
 
-Or let the app show available ports and choose interactively:
+Or run without `--port`:
 
 ```powershell
 cd Python
 python serial_plot.py
 ```
+
+When `--port` is omitted:
+- If the last successfully communicating COM port exists, it is auto-selected at startup.
+- Otherwise, the app starts disconnected and COM selection/connection is done from the browser UI.
+- Interactive COM selection in the command line is not used.
 
 Open in browser:
 
@@ -107,6 +112,9 @@ http://127.0.0.1:5000
 - `GET /data` : latest plot payload
 - `POST /reset` : set current values as baseline
 - `GET /id` : request sensor unique ID over serial
+- `GET /api/ports` : list available COM ports
+- `POST /api/connect/<port>` : connect to specified COM port
+- `POST /api/disconnect` : disconnect current COM port
 
 ## Arduino Build Notes
 

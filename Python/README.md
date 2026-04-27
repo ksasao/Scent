@@ -1,10 +1,6 @@
 # Web Serial Plotter (M5Atom + BME688)
 
-This app reads CSV lines from a serial COM port and serves a realtime graph in your web browser:
-
-- X axis: time (2nd column, relative seconds)
-- Y axis: current value (6th column)
-- Separate line for each value of the 1st column (0-9)
+This app reads CSV lines from a serial COM port, validates CRC-8, and serves a realtime graph in your browser.
 
 ## Setup (Windows PowerShell)
 
@@ -21,48 +17,76 @@ Specify COM port directly:
 python serial_plot.py --port COM3 --baudrate 115200 --host 127.0.0.1 --web-port 5000
 ```
 
-Or run without `--port` to select from detected ports interactively:
+Or run without `--port`:
 
 ```powershell
 python serial_plot.py
 ```
 
-Then open this URL in your browser:
+When `--port` is omitted:
+
+- If the last successfully communicating COM port exists, it is auto-selected at startup.
+- Otherwise, the app starts disconnected and you select/connect from the browser UI.
+- Interactive COM selection in the command line is not used.
+
+Open this URL in your browser:
 
 ```text
 http://127.0.0.1:5000
 ```
 
+## Serial Input Format
+
+Expected line format:
+
+```text
+index,temp,humidity,pressure,current,crc
+```
+
+Example:
+
+```text
+3,24.71,42.51,100842.89,10.337,A4
+```
+
+Field notes:
+
+- `index`: channel `0-9`
+- `temp`: temperature
+- `humidity`: relative humidity
+- `pressure`: pressure
+- `current`: `log(gas_resistance)` value
+- `crc`: CRC-8 (AUTOSAR polynomial `0x31`) of text before the final comma
+
+## Plot Behavior
+
+- 10 lines are plotted (`D0` to `D9`) based on `index`
+- X axis uses relative seconds from Python receive time (not Arduino timestamp)
+- Y axis uses `current`
+- `Reset` stores baseline and switches to delta mode
+
+## Web UI
+
+- COM port dropdown + single `Connect/Disconnect` toggle button
+- Dropdown is disabled while connected
+- Communication indicator:
+	- green dot: normal
+	- red dot: abnormal
+
 ## Logging
 
-- Log files are saved under `Python/logs/`
-- File name format: `yyyyMMdd_HHmmss.csv` (application startup time)
-- Each logged line prepends current timestamp as the first column:
-	- `yyyy/MM/dd HH:mm:ss.fff`
+- Raw log files: `Python/logs/YYYYMMDD_HHMMSS.csv`
+	- each line: `python_timestamp,raw_serial_line`
+- Aggregated files: `Python/data/YYYYMMDD_HHMMSS.csv`
+	- header: `date,temperature,humidity,pressure,d0,d1,...,d9`
+	- one row is emitted when channel `9` is received
 
-Example logged line:
+## API Endpoints
 
-```text
-2026/04/26 15:22:31.123,3,209547,36.67,21.78,101704.55,17.254
-```
-
-## Notes
-
-- X axis: relative time from the 2nd column
-- Y axis: 6th column value (current)
-- Separate line for each 1st-column channel (0-9)
-- Click `Reset` in the browser to save latest ch0-ch9 values as baseline
-- After Reset, graph switches to delta mode: `updated value - baseline value`
-- Logging always stores raw received data (no delta conversion)
-
-## Expected Input Format
-
-```text
-3,209547,36.67,21.78,101704.55,17.254
-```
-
-Only these fields are used for plotting:
-
-- 1st column: channel/index (0-9)
-- 2nd column: timestamp (ms)
-- 6th column: plotted current value
+- `GET /`: dashboard
+- `GET /data`: latest graph payload and status
+- `POST /reset`: set baseline
+- `GET /id`: request sensor unique ID (`id` command)
+- `GET /api/ports`: list available COM ports
+- `POST /api/connect/<port>`: request connection to COM port
+- `POST /api/disconnect`: disconnect current COM port
