@@ -90,3 +90,13 @@ Field notes:
 - `GET /api/ports`: list available COM ports
 - `POST /api/connect/<port>`: request connection to COM port
 - `POST /api/disconnect`: disconnect current COM port
+
+## Code Structure
+
+- `serial_plot.py`: thin entrypoint (argument parsing, startup, thread launch)
+- `scent_web/config.py`: runtime constants (timeouts, retry limits, flush interval)
+- `scent_web/crc.py`: CRC-8 table and calculation
+- `scent_web/state.py`: shared runtime state object
+- `scent_web/utils.py`: timestamps, file/port helpers, persistence
+- `scent_web/serial_worker.py`: serial parsing and acquisition loop
+- `scent_web/web_app.py`: Flask app factory and API routes

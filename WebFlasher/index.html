@@ -1,0 +1,64 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M5Atom Lite Web Flasher</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="panel">
+    <section class="head">
+      <h1>匂いセンサファームウェア更新ツール</h1>
+      <p class="sub">
+        USB接続した M5Atom Lite に、ファームウェアを書き込みます。<br>
+        対応ブラウザ: Chrome / Edge / Opera (WebSerialに対応している必要があります)
+      </p>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>書き込み手順</h2>
+        <ol>
+          <li>M5Atom Lite を USB でPCに接続する</li>
+          <li>下の 接続 ボタンを押す</li>
+          <li>表示されたシリアルポートを選択する</li>
+          <li>必要に応じて 全消去 を選択し、書き込み開始を実行する</li>
+          <li>完了後に自動再起動を待つ</li>
+        </ol>
+
+        <div class="install-wrap">
+          <div class="controls">
+            <button id="connectBtn" type="button">接続</button>
+            <button id="flashBtn" type="button" disabled>書き込み開始</button>
+            <button id="disconnectBtn" class="secondary" type="button" disabled>切断</button>
+            <label class="check"><input id="eraseAll" type="checkbox">全消去</label>
+          </div>
+        </div>
+
+        <div id="status" class="status">ブラウザとUSB接続のチェック待ちです。</div>
+        <pre id="log" class="log">[ready] ログを表示します。</pre>
+
+        <p class="meta">
+          初回書き込み時は <strong>Erase device</strong> を有効にするとトラブルを減らせます。<br>
+          書き込みが失敗する場合は、USBケーブルの交換と、他ツールのシリアルポート占有解除を確認してください。
+        </p>
+      </article>
+
+      <aside class="card">
+        <h2>このページについて</h2>
+        <p class="meta">
+          このWebフラッシャーは esptool.js を直接利用しています。<br>
+          manifest.json とバイナリを読み込み、書き込みフローをアプリ側で制御します。
+        </p>
+        <p class="meta">
+          Source:
+          <a href="https://github.com/espressif/esptool-js" target="_blank" rel="noopener">esptool.js</a>
+        </p>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module" src="flasher.js"></script>
+</body>
+</html>
