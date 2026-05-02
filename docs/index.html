@@ -169,10 +169,10 @@
 
     <!-- ---- Hero ---- -->
     <div class="hero">
-      <h1>Scent – 匂いセンサ 利用ガイド</h1>
+      <h1>匂いセンサ 利用ガイド</h1>
       <p>
-        M5Atom Lite + BME688 を使ったリアルタイム匂いセンサシステムの<br>
-        セットアップ手順をまとめています。手順どおりに進めてください。
+        M5Atom Lite + ENV Pro SENSOR (BME688) を使った匂いセンサシステムの<br>
+        セットアップ手順です。
       </p>
     </div>
 
@@ -185,7 +185,6 @@
       <div class="card-body">
         <p>
           M5Atom Lite に専用ファームウェアを書き込みます。<br>
-          別途インストール不要のブラウザベースの書き込みツールを使います。
         </p>
 
         <ol>
@@ -197,6 +196,7 @@
         </ol>
 
         <div class="note">
+          <strong>注意:</strong> ドライバーをインストールしていない場合には、<a href="https://ftdichip.com/drivers/vcp-drivers/">https://ftdichip.com/drivers/vcp-drivers/</a>の Windows (Desktop) の Comments にある <a href="https://bunny-wp-pullzone-gzkpk4o8xt.b-cdn.net/wp-content/uploads/2025/03/CDM2123620_Setup.zip">setup executable</a> (none-ARM64) からドライバーをダウンロードしインストールしてください。<br>
           <strong>対応ブラウザ:</strong> Chrome / Edge / Opera（Web Serial API が必要です）<br>
           Safari・Firefox には対応していません。
         </div>
@@ -220,6 +220,7 @@
 
         <ol>
           <li>下の「アプリをダウンロード」ボタンから ZIP ファイルをダウンロードする</li>
+          <li>ZIPファイルを右クリック > プロパティ > 全般タブの セキュリティ で <b>許可する</b> にチェックを入れ <b>適用</b> を押す</li>
           <li>ZIP を任意のフォルダに展開する</li>
           <li><code>Scent.exe</code> をダブルクリックして起動する</li>
           <li>M5Atom Lite を USB でPCに接続する</li>
@@ -230,7 +231,6 @@
         <div class="note">
           <strong>動作環境:</strong> Windows 11（64 bit）<br>
           <strong>注意:</strong> セキュリティの警告が表示された場合は「詳細情報」→「実行」を選択してください。<br>
-          WebView2 Runtime が必要ですが、Windows 11 には標準で搭載されています。
         </div>
 
         <br>
