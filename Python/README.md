@@ -6,7 +6,7 @@ This app reads CSV lines from a serial COM port, validates CRC-8, and serves a r
 
 ```powershell
 cd Python
-python -m pip install -r requirements.txt
+py -m pip install -r requirements.txt
 ```
 
 ## Run
@@ -53,17 +53,56 @@ The desktop version opens the same UI inside a native window using WebView2 on W
 
 ## Build EXE for Windows 11
 
-Install the build tool once:
+Run in Windows PowerShell:
 
 ```powershell
-python -m pip install pyinstaller
+cd Python
+```
+
+Install dependencies (first time only):
+
+```powershell
+py -m pip install -r requirements.txt
+```
+
+Generate the application icon from the current icon design:
+
+```powershell
+py make_icon.py
+```
+
+Optional: update `WebFlasher/` with the latest Arduino build outputs (run after rebuilding in Arduino IDE):
+
+```powershell
+py sync_firmware_assets.py build
+```
+
+This generates `WebFlasher/flash_config.json` and copies the firmware binaries into `WebFlasher/firmware/`. You can open `WebFlasher/` with a local server to verify flashing before publishing.
+
+Optional: deploy `WebFlasher/` contents to `docs/firmware/` for publishing:
+
+```powershell
+py sync_firmware_assets.py deploy
+```
+
+This copies `index.html`, `style.css`, `flasher.js`, `flash_config.json`, and `firmware/*.bin` from `WebFlasher/` into `docs/firmware/`, and regenerates `manifest.json`.
+
+To run both steps at once:
+
+```powershell
+py sync_firmware_assets.py
+```
+
+Optional: stop a running desktop app before rebuild:
+
+```powershell
+Get-Process Scent -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
 Create the distributable app:
 
 ```powershell
-cd Python
-.\build_windows.ps1
+py -m PyInstaller --noconfirm --clean --windowed --onedir --name Scent --icon Scent.ico --add-data "templates;templates" --add-data "static;static" --collect-all webview desktop_main.py
 ```
 
 Output folder:
@@ -72,9 +111,17 @@ Output folder:
 Python/dist/Scent/
 ```
 
+Quick check:
+
+```powershell
+Test-Path .\dist\Scent\Scent.exe
+```
+
 Notes:
 
+- `requirements.txt` includes both runtime and Windows build dependencies.
 - `templates` and `static` are bundled automatically.
+- `make_icon.py` regenerates `Scent.ico` from the current icon design before building.
 - `WebView2 Runtime` must be present on the target Windows 11 machine.
 
 ## Serial Input Format
@@ -138,7 +185,7 @@ Field notes:
 
 - `serial_plot.py`: thin entrypoint (argument parsing, startup, thread launch)
 - `desktop_main.py`: Windows desktop launcher using embedded WebView
-- `build_windows.ps1`: PyInstaller build script for Windows distribution
+- `make_icon.py`: generates `Scent.ico` used by PyInstaller
 - `scent_web/config.py`: runtime constants (timeouts, retry limits, flush interval)
 - `scent_web/crc.py`: CRC-8 table and calculation
 - `scent_web/state.py`: shared runtime state object

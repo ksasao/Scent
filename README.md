@@ -110,8 +110,9 @@ Build distributable EXE:
 
 ```powershell
 cd Python
-python -m pip install pyinstaller
-.\build_windows.ps1
+py -m pip install -r requirements.txt
+py make_icon.py
+py -m PyInstaller --noconfirm --clean --windowed --onedir --name Scent --icon Scent.ico --add-data "templates;templates" --add-data "static;static" --collect-all webview desktop_main.py
 ```
 
 The distributable output is created under `Python/dist/Scent/`.

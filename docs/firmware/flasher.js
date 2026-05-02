@@ -10,7 +10,7 @@ const eraseAllEl = document.getElementById("eraseAll");
 let port = null;
 let transport = null;
 let esploader = null;
-let firmwareManifest = null;
+let flashConfig = null;
 
 function appendLog(message) {
   const ts = new Date().toLocaleTimeString("ja-JP", { hour12: false });
@@ -31,25 +31,27 @@ function setStatus(type, message) {
   statusEl.textContent = message;
 }
 
-async function loadManifest() {
-  if (firmwareManifest) return firmwareManifest;
-  const res = await fetch("./manifest.json", { cache: "no-store" });
-  if (!res.ok) throw new Error(`manifest.json の取得に失敗 (${res.status})`);
-  firmwareManifest = await res.json();
-  return firmwareManifest;
+async function loadFlashConfig() {
+  if (flashConfig) return flashConfig;
+  const res = await fetch("./flash_config.json", { cache: "no-store" });
+  if (!res.ok) throw new Error(`flash_config.json の取得に失敗 (${res.status})`);
+  flashConfig = await res.json();
+  return flashConfig;
 }
 
-async function fetchFirmwareParts(manifest) {
-  const build = manifest?.builds?.[0];
-  if (!build?.parts?.length) throw new Error("manifest.json に builds[0].parts が見つかりません。");
+async function fetchFirmwareParts(config) {
+  const files = config?.files;
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error("flash_config.json に files が見つかりません。");
+  }
 
   const fileArray = [];
-  for (const part of build.parts) {
+  for (const part of files) {
     const res = await fetch(part.path, { cache: "no-store" });
     if (!res.ok) throw new Error(`${part.path} の取得に失敗 (${res.status})`);
     const data = new Uint8Array(await res.arrayBuffer());
-    fileArray.push({ data, address: part.offset });
-    appendLog(`part 読み込み: ${part.path} (${data.length} bytes @ 0x${part.offset.toString(16)})`);
+    fileArray.push({ data, address: part.address });
+    appendLog(`part 読み込み: ${part.path} (${data.length} bytes @ 0x${part.address.toString(16)})`);
   }
   return fileArray;
 }
@@ -89,17 +91,17 @@ async function flashDevice() {
 
   setButtons({ connectDisabled: true, flashDisabled: true, disconnectDisabled: true, eraseDisabled: true });
   try {
-    const manifest = await loadManifest();
-    appendLog(`manifest 読み込み: ${manifest.name || "(nameなし)"} v${manifest.version || "?"}`);
-    const fileArray = await fetchFirmwareParts(manifest);
+    const config = await loadFlashConfig();
+    appendLog(`flash config 読み込み: ${config.name || "(nameなし)"} v${config.version || "?"}`);
+    const fileArray = await fetchFirmwareParts(config);
 
     await esploader.writeFlash({
       fileArray,
-      flashMode: "dio",
-      flashFreq: "40m",
-      flashSize: "4MB",
+      flashMode: config.flashMode,
+      flashFreq: config.flashFreq,
+      flashSize: config.flashSize,
       eraseAll: eraseAllEl.checked,
-      compress: true,
+      compress: config.compress !== false,
       reportProgress: (fileIndex, written, total) => {
         const pct = Math.floor((written / total) * 100);
         setStatus("", `書き込み中: file ${fileIndex + 1}/${fileArray.length} ${pct}%`);
@@ -164,10 +166,10 @@ window.addEventListener("beforeunload", () => {
 });
 
 try {
-  loadManifest().then((m) => {
-    appendLog(`manifest 事前確認: ${m.name || "(nameなし)"}`);
+  loadFlashConfig().then((config) => {
+    appendLog(`flash config 事前確認: ${config.name || "(nameなし)"}`);
   }).catch((err) => {
-    appendLog(`manifest 事前確認エラー: ${err?.message || err}`);
+    appendLog(`flash config 事前確認エラー: ${err?.message || err}`);
   });
 } catch (err) {
   appendLog(`初期化エラー: ${err?.message || err}`);

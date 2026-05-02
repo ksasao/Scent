@@ -76,6 +76,7 @@ dist/
 
 # Python runtime state
 Python/last_good_port.txt
+Python/dist/**/last_good_port.txt
 
 # Arduino build output
 Arduino/**/build/

@@ -1,0 +1,31 @@
+{
+  "name": "匂いセンサファームウェア",
+  "version": "1.0.0",
+  "chipFamily": "ESP32",
+  "flashMode": "dio",
+  "flashFreq": "80m",
+  "flashSize": "4MB",
+  "compress": true,
+  "files": [
+    {
+      "path": "./firmware/bootloader.bin",
+      "address": 4096,
+      "source": "Scent.ino.bootloader.bin"
+    },
+    {
+      "path": "./firmware/partitions.bin",
+      "address": 32768,
+      "source": "Scent.ino.partitions.bin"
+    },
+    {
+      "path": "./firmware/boot_app0.bin",
+      "address": 57344,
+      "source": "boot_app0.bin"
+    },
+    {
+      "path": "./firmware/application.bin",
+      "address": 65536,
+      "source": "Scent.ino.bin"
+    }
+  ]
+}
