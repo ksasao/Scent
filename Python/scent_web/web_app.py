@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 from typing import Dict
@@ -14,8 +15,15 @@ from .utils import available_ports, now_text
 
 
 def create_app(state: SharedState, update_ms: int) -> Flask:
-    template_dir = Path(__file__).resolve().parent.parent / "templates"
-    app = Flask(__name__, template_folder=str(template_dir))
+    base_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    template_dir = base_dir / "templates"
+    static_dir = base_dir / "static"
+    app = Flask(
+        __name__,
+        template_folder=str(template_dir),
+        static_folder=str(static_dir),
+        static_url_path="/static",
+    )
 
     @app.get("/")
     def index():

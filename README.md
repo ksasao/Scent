@@ -4,7 +4,7 @@ Realtime gas sensing and visualization with **M5Atom Lite + ENV Pro (BME688)**.
 
 This repository contains:
 - Arduino firmware to read BME688 data (heater profile / gas index 0-9)
-- A Python web app to read serial data, validate CRC, plot realtime graphs, and save CSV logs
+- A Python app to read serial data, validate CRC, plot realtime graphs, and save CSV logs in browser or embedded desktop mode
 
 ## Repository Layout
 
@@ -38,6 +38,7 @@ Python/
 - Reset button for baseline/delta mode
 - Auto-reconnect for COM disconnects with exponential backoff
 - Logs raw serial lines and writes aggregated rows on D9 timing
+- Windows desktop launcher via embedded WebView2
 
 ## Serial Data Format
 
@@ -97,6 +98,23 @@ Open in browser:
 ```
 http://127.0.0.1:5000
 ```
+
+Desktop mode on Windows 11:
+
+```powershell
+cd Python
+python desktop_main.py --port COM3
+```
+
+Build distributable EXE:
+
+```powershell
+cd Python
+python -m pip install pyinstaller
+.\build_windows.ps1
+```
+
+The distributable output is created under `Python/dist/Scent/`.
 
 ## Runtime Outputs
 

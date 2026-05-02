@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scent – 匂いセンサ 利用ガイド</title>
+  <style>
+    :root {
+      --bg-1: #f7efe3;
+      --bg-2: #dceeff;
+      --card: #ffffffee;
+      --ink: #1b222b;
+      --muted: #4d5a68;
+      --accent: #0a84ff;
+      --ok: #157f3b;
+      --radius: 16px;
+      --shadow: 0 12px 28px rgba(14, 34, 56, 0.15);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: "BIZ UDPGothic", "Yu Gothic", "Meiryo", sans-serif;
+      background:
+        radial-gradient(circle at 15% 10%, #fff8dc 0%, transparent 42%),
+        radial-gradient(circle at 85% 88%, #dff6ff 0%, transparent 45%),
+        linear-gradient(135deg, var(--bg-1), var(--bg-2));
+      padding: 32px 16px 64px;
+    }
+
+    .page {
+      width: min(860px, 100%);
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ---- hero ---- */
+    .hero {
+      background: var(--card);
+      border: 1px solid #d6e2f0;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px 28px 24px;
+      animation: rise 500ms ease;
+    }
+
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.3rem, 2.4vw, 2rem);
+      letter-spacing: 0.02em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* ---- step cards ---- */
+    .card {
+      background: var(--card);
+      border: 1px solid #d6e2f0;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      animation: rise 500ms ease;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 24px 14px;
+      border-bottom: 1px solid #e8edf5;
+      background: linear-gradient(90deg, #ffffff, #f5fafe);
+    }
+
+    .step-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.05rem;
+      flex-shrink: 0;
+    }
+
+    .card-head h2 {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+
+    .card-body {
+      padding: 20px 24px 24px;
+    }
+
+    .card-body p {
+      margin: 0 0 14px;
+      line-height: 1.75;
+      color: var(--muted);
+    }
+
+    .card-body ol,
+    .card-body ul {
+      margin: 0 0 14px;
+      padding-left: 1.5em;
+      line-height: 2;
+      color: var(--ink);
+    }
+
+    .card-body li::marker {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* ---- CTA button ---- */
+    .cta {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 11px 26px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+
+    .cta:hover { opacity: 0.85; }
+
+    .cta.secondary {
+      background: #e8f0fe;
+      color: var(--accent);
+      margin-left: 10px;
+    }
+
+    /* ---- note box ---- */
+    .note {
+      background: #fffbe6;
+      border: 1px solid #f0d070;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: #5a4800;
+      margin-top: 16px;
+    }
+
+    .note strong { color: #3a2f00; }
+
+    @keyframes rise {
+      from { transform: translateY(10px); opacity: 0; }
+      to   { transform: translateY(0);   opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- ---- Hero ---- -->
+    <div class="hero">
+      <h1>Scent – 匂いセンサ 利用ガイド</h1>
+      <p>
+        M5Atom Lite + BME688 を使ったリアルタイム匂いセンサシステムの<br>
+        セットアップ手順をまとめています。手順どおりに進めてください。
+      </p>
+    </div>
+
+    <!-- ---- Step 1: Firmware ---- -->
+    <div class="card">
+      <div class="card-head">
+        <span class="step-badge">1</span>
+        <h2>ファームウェアの書き込み</h2>
+      </div>
+      <div class="card-body">
+        <p>
+          M5Atom Lite に専用ファームウェアを書き込みます。<br>
+          別途インストール不要のブラウザベースの書き込みツールを使います。
+        </p>
+
+        <ol>
+          <li>M5Atom Lite を PC に USB ケーブルで接続する</li>
+          <li>下の「書き込みツールを開く」ボタンをクリックする</li>
+          <li>ページ内の <strong>接続</strong> ボタンを押し、表示されたシリアルポートを選択する</li>
+          <li><strong>書き込み開始</strong> を押して完了まで待つ（初回は <strong>全消去</strong> にチェックを入れることを推奨）</li>
+          <li>書き込み完了後、M5Atom Lite が自動で再起動する</li>
+        </ol>
+
+        <div class="note">
+          <strong>対応ブラウザ:</strong> Chrome / Edge / Opera（Web Serial API が必要です）<br>
+          Safari・Firefox には対応していません。
+        </div>
+
+        <br>
+        <a class="cta" href="./firmware/" target="_blank" rel="noopener">書き込みツールを開く</a>
+      </div>
+    </div>
+
+    <!-- ---- Step 2: Desktop App ---- -->
+    <div class="card">
+      <div class="card-head">
+        <span class="step-badge">2</span>
+        <h2>可視化アプリの起動</h2>
+      </div>
+      <div class="card-body">
+        <p>
+          Windows 11 用の可視化アプリをダウンロードし、ファームウェアを書き込んだ
+          M5Atom Lite と接続してリアルタイムグラフを確認します。
+        </p>
+
+        <ol>
+          <li>下の「アプリをダウンロード」ボタンから ZIP ファイルをダウンロードする</li>
+          <li>ZIP を任意のフォルダに展開する</li>
+          <li><code>Scent.exe</code> をダブルクリックして起動する</li>
+          <li>M5Atom Lite を USB でPCに接続する</li>
+          <li>アプリ画面の <strong>COM ポートドロップダウン</strong> から該当ポートを選択し、<strong>Connect</strong> を押す</li>
+          <li>グラフが更新され始めたら接続完了</li>
+        </ol>
+
+        <div class="note">
+          <strong>動作環境:</strong> Windows 11（64 bit）<br>
+          <strong>注意:</strong> セキュリティの警告が表示された場合は「詳細情報」→「実行」を選択してください。<br>
+          WebView2 Runtime が必要ですが、Windows 11 には標準で搭載されています。
+        </div>
+
+        <br>
+        <!-- TODO: リリースページの URL に差し替えてください -->
+        <a class="cta" href="https://github.com/ksasao/Scent/releases/latest/download/ScentApp_win11_v1.0.0.zip">アプリをダウンロード</a>
+        <!-- TODO: リリース一覧ページの URL に差し替えてください -->
+        <a class="cta secondary" href="https://github.com/ksasao/Scent/releases">リリース一覧</a>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

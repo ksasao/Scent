@@ -62,3 +62,20 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Python runtime state
+Python/last_good_port.txt
+
+# Arduino build output
+Arduino/**/build/

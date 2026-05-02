@@ -4,12 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import threading
 
-from scent_web.serial_worker import serial_reader
-from scent_web.state import SharedState
-from scent_web.utils import available_ports, load_last_good_port, now_text
-from scent_web.web_app import create_app
+from scent_web.runtime import RuntimeOptions, create_runtime, stop_runtime
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -27,34 +23,24 @@ def main() -> None:
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    serial_port = args.port
-    if serial_port is None:
-        remembered = load_last_good_port()
-        if remembered and remembered in available_ports():
-            serial_port = remembered
-            print(f"[{now_text()}] Auto-selected last good port: {serial_port}")
-        else:
-            print(f"[{now_text()}] No startup port selected. Please choose a COM port from the Web UI.")
-
-    state = SharedState(max_points=args.max_points)
-    reader = threading.Thread(
-        target=serial_reader,
-        args=(serial_port, args.baudrate, state),
-        daemon=True,
+    runtime = create_runtime(
+        RuntimeOptions(
+            port=args.port,
+            baudrate=args.baudrate,
+            max_points=args.max_points,
+            update_ms=args.update_ms,
+        )
     )
-    reader.start()
 
-    app = create_app(state=state, update_ms=args.update_ms)
-    serial_text = serial_port if serial_port else "(not selected)"
-    print(f"Serial: {serial_text} @ {args.baudrate} bps")
+    serial_text = runtime.serial_port if runtime.serial_port else "(not selected)"
+    print(f"Serial: {serial_text} @ {runtime.baudrate} bps")
     print(f"Web UI: http://{args.host}:{args.web_port}")
     print("Press Ctrl+C to stop.")
 
     try:
-        app.run(host=args.host, port=args.web_port, debug=False, use_reloader=False)
+        runtime.app.run(host=args.host, port=args.web_port, debug=False, use_reloader=False)
     finally:
-        state.stop_event.set()
-        reader.join(timeout=2)
+        stop_runtime(runtime)
 
 
 if __name__ == "__main__":

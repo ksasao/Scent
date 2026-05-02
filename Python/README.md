@@ -1,6 +1,6 @@
 # Web Serial Plotter (M5Atom + BME688)
 
-This app reads CSV lines from a serial COM port, validates CRC-8, and serves a realtime graph in your browser.
+This app reads CSV lines from a serial COM port, validates CRC-8, and serves a realtime graph in a browser or an embedded desktop window.
 
 ## Setup (Windows PowerShell)
 
@@ -10,6 +10,8 @@ python -m pip install -r requirements.txt
 ```
 
 ## Run
+
+Browser version:
 
 Specify COM port directly:
 
@@ -34,6 +36,46 @@ Open this URL in your browser:
 ```text
 http://127.0.0.1:5000
 ```
+
+Desktop window version:
+
+```powershell
+python desktop_main.py --port COM3
+```
+
+Or without `--port`:
+
+```powershell
+python desktop_main.py
+```
+
+The desktop version opens the same UI inside a native window using WebView2 on Windows 11.
+
+## Build EXE for Windows 11
+
+Install the build tool once:
+
+```powershell
+python -m pip install pyinstaller
+```
+
+Create the distributable app:
+
+```powershell
+cd Python
+.\build_windows.ps1
+```
+
+Output folder:
+
+```text
+Python/dist/Scent/
+```
+
+Notes:
+
+- `templates` and `static` are bundled automatically.
+- `WebView2 Runtime` must be present on the target Windows 11 machine.
 
 ## Serial Input Format
 
@@ -72,6 +114,7 @@ Field notes:
 - Communication indicator:
 	- green dot: normal
 	- red dot: abnormal
+- Desktop mode uses the same HTML UI inside an embedded window.
 
 ## Logging
 
@@ -94,9 +137,12 @@ Field notes:
 ## Code Structure
 
 - `serial_plot.py`: thin entrypoint (argument parsing, startup, thread launch)
+- `desktop_main.py`: Windows desktop launcher using embedded WebView
+- `build_windows.ps1`: PyInstaller build script for Windows distribution
 - `scent_web/config.py`: runtime constants (timeouts, retry limits, flush interval)
 - `scent_web/crc.py`: CRC-8 table and calculation
 - `scent_web/state.py`: shared runtime state object
+- `scent_web/runtime.py`: shared bootstrap for CLI and desktop launchers
 - `scent_web/utils.py`: timestamps, file/port helpers, persistence
 - `scent_web/serial_worker.py`: serial parsing and acquisition loop
 - `scent_web/web_app.py`: Flask app factory and API routes

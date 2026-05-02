@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple
@@ -9,12 +10,21 @@ from typing import List, Tuple
 from serial.tools import list_ports
 
 
+def _app_dir() -> Path:
+    """Return the directory that contains the running EXE (frozen) or the repo root (source)."""
+    if getattr(sys, "frozen", False):
+        # PyInstaller: sys.executable is Scent.exe itself
+        return Path(sys.executable).resolve().parent
+    # Running from source: go up from scent_web/ to Python/
+    return Path(__file__).resolve().parent.parent
+
+
 def now_text() -> str:
     return datetime.now().strftime("%Y/%m/%d %H:%M:%S.%f")[:-3]
 
 
 def create_output_files() -> Tuple[Path, Path]:
-    base_dir = Path(__file__).resolve().parent.parent
+    base_dir = _app_dir()
     log_dir = base_dir / "logs"
     data_dir = base_dir / "data"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -28,7 +38,7 @@ def create_output_files() -> Tuple[Path, Path]:
 
 
 def last_good_port_file() -> Path:
-    return Path(__file__).resolve().parent.parent / "last_good_port.txt"
+    return _app_dir() / "last_good_port.txt"
 
 
 def load_last_good_port() -> str | None:
