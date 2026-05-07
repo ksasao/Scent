@@ -4,7 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import platform
 import socket
+import subprocess
+import sys
 import threading
 import time
 
@@ -58,9 +62,78 @@ def wait_for_server(host: str, port: int, timeout_s: float = 5.0) -> None:
     raise RuntimeError(f"Embedded server did not start within {timeout_s:.1f}s")
 
 
+def show_dependency_message(title: str, message: str) -> None:
+    """Show dependency guidance in a native dialog on Windows."""
+    if platform.system() == "Windows":
+        ctypes.windll.user32.MessageBoxW(0, message, title, 0x00000010)
+    else:
+        print(f"{title}\n{message}", file=sys.stderr)
+
+
+def has_webview2_runtime() -> bool:
+    """Return True when Microsoft Edge WebView2 Runtime appears installed."""
+    if platform.system() != "Windows":
+        return True
+
+    client_guid = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    keys = (
+        fr"HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\{client_guid}",
+        fr"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{client_guid}",
+        fr"HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\{client_guid}",
+    )
+    for key in keys:
+        result = subprocess.run(
+            ["reg", "query", key, "/v", "pv"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and "pv" in result.stdout:
+            return True
+    return False
+
+
+def get_pythonnet_error() -> str | None:
+    """Return an error message when pythonnet/.NET runtime cannot initialize."""
+    try:
+        import clr  # type: ignore # noqa: F401
+    except Exception as exc:  # pragma: no cover - depends on local runtime state
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
+def require_desktop_dependencies() -> None:
+    """Ensure required desktop runtime dependencies are present."""
+    missing_runtime_messages: list[str] = []
+
+    if not has_webview2_runtime():
+        missing_runtime_messages.append("- Microsoft Edge WebView2 Runtime")
+
+    pythonnet_error = get_pythonnet_error()
+    if pythonnet_error is not None:
+        missing_runtime_messages.append("- .NET Desktop Runtime 8 (x64)")
+
+    if not missing_runtime_messages:
+        return
+
+    show_dependency_message(
+        "Missing Runtime Dependencies",
+        "This app cannot initialize desktop dependencies.\n\n"
+        "Please install/update the following and start the app again:\n"
+        + "\n".join(missing_runtime_messages)
+        + "\n\nDownload:\n"
+        "WebView2: https://developer.microsoft.com/microsoft-edge/webview2/\n"
+        ".NET 8 Desktop Runtime: https://dotnet.microsoft.com/download/dotnet/8.0/runtime"
+        + (f"\n\nTechnical detail:\n{pythonnet_error}" if pythonnet_error else ""),
+    )
+    raise SystemExit(1)
+
+
 def main() -> None:
     parser = build_arg_parser()
     args = parser.parse_args()
+
+    require_desktop_dependencies()
 
     runtime = create_runtime(
         RuntimeOptions(
@@ -90,6 +163,18 @@ def main() -> None:
             min_size=(980, 700),
         )
         webview.start()
+    except Exception as exc:
+        show_dependency_message(
+            "Failed To Start Desktop UI",
+            "Failed to initialize desktop WebView.\n\n"
+            "Please verify these runtimes are installed:\n"
+            "- Microsoft Edge WebView2 Runtime\n"
+            "- .NET Desktop Runtime 8 (x64)\n\n"
+            "WebView2: https://developer.microsoft.com/microsoft-edge/webview2/\n"
+            ".NET 8 Desktop Runtime: https://dotnet.microsoft.com/download/dotnet/8.0/runtime\n\n"
+            f"Error: {exc}",
+        )
+        raise
     finally:
         server.stop()
         stop_runtime(runtime)

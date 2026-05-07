@@ -102,7 +102,7 @@ Get-Process Scent -ErrorAction SilentlyContinue | Stop-Process -Force
 Create the distributable app:
 
 ```powershell
-py -m PyInstaller --noconfirm --clean --windowed --onedir --name Scent --icon Scent.ico --add-data "templates;templates" --add-data "static;static" --collect-all webview desktop_main.py
+py -m PyInstaller --noconfirm --clean --windowed --onedir --name Scent --icon Scent.ico --add-data "templates;templates" --add-data "static;static" --collect-all webview --collect-all pythonnet --collect-all clr_loader desktop_main.py
 ```
 
 Output folder:
@@ -120,6 +120,7 @@ Test-Path .\dist\Scent\Scent.exe
 Notes:
 
 - `requirements.txt` includes both runtime and Windows build dependencies.
+- The PyInstaller command explicitly collects `pythonnet` and `clr_loader` to avoid missing .NET loader files at runtime.
 - `templates` and `static` are bundled automatically.
 - `make_icon.py` regenerates `Scent.ico` from the current icon design before building.
 - `WebView2 Runtime` must be present on the target Windows 11 machine.
