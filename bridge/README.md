@@ -47,14 +47,32 @@ ollama pull mistral  # または llama2
 python main.py
 ```
 
+または uvicorn で直接起動する場合:
+
+```bash
+uvicorn server:create_app --factory --host 127.0.0.1 --port 8001
+```
+
 ブリッジは `http://127.0.0.1:8001` で起動します。
+
+### 6. MCP サーバー起動（任意）
+
+```bash
+python mcp_server.py --transport streamable-http --host 127.0.0.1 --port 8002
+```
+
+VS Code 連携など stdio トランスポートで起動する場合:
+
+```bash
+python mcp_server.py --transport stdio
+```
 
 ## API エンドポイント
 
 ### HTTP
 
 bridge は単なるイベントキューだけでなく、接続中 Viewer から同期された localStorage ベースのセッション状態も保持します。
-そのため `/sessions` と `/sessions/{session_id}/download` は、現在 bridge に状態同期している Viewer origin の内容を返します。
+そのため `/sessions` は records を除いたコンパクトな一覧を返し、全体の ZIP 取得は `/sessions/{session_id}/download` または別名の `/sessions/{session_id}/download-full` を使います。
 
 例:
 - `http://localhost:8000/viewer/` が接続中なら localhost 側 localStorage のセッションを返す
@@ -113,7 +131,7 @@ GET /events?skip=0&limit=100
 GET /sessions
 ```
 
-現在 bridge に同期されている Viewer のセッション一覧を返します。
+現在 bridge に同期されている Viewer のセッション一覧を、records を除いたコンパクトな形式で返します。
 
 **セッション ZIP ダウンロード**
 ```
@@ -122,10 +140,46 @@ GET /sessions/{session_id}/download
 
 指定 `session_id` を、現在同期されている Viewer の localStorage セッション内容から ZIP 化して返します。
 
+**セッション ZIP ダウンロード（別名）**
+```
+GET /sessions/{session_id}/download-full
+```
+
+`/sessions/{session_id}/download` と同じ内容を返す別名エンドポイントです。
+
 **保留中コマンド取得**
 ```
 GET /commands/pending
 ```
+
+**コマンド履歴取得**
+```
+GET /commands/history?limit=100
+```
+
+**コマンド投入**
+```
+POST /commands
+Content-Type: application/json
+
+{
+  "type": "start_session",
+  "payload": {
+    "name": "sample"
+  }
+}
+```
+
+代表的な `type`:
+- `connect_device`
+- `disconnect_device`
+- `start_session`
+- `stop_session`
+- `query_device_id`
+- `query_state`
+- `download_session`
+- `export_session`
+- `notify_user`
 
 **コマンド実行報告**
 ```
@@ -197,12 +251,14 @@ ws://127.0.0.1:8001/ws/viewer
 bridge/
 ├── main.py              # エントリーポイント
 ├── server.py            # FastAPI サーバー実装
+├── mcp_server.py        # MCP サーバー実装
 ├── config.py            # 設定
 ├── events.py            # イベント定義
 ├── commands.py          # コマンド定義
 ├── ai.py                # AI 連携（Ollama / 外部 API）
 ├── requirements.txt     # 依存パッケージ
 ├── .env.example         # 環境変数テンプレート
+├── downloads/           # MCP 経由のダウンロード保存先
 ├── logs/                # ログファイル出力先
 └── README.md            # このファイル
 ```
@@ -264,26 +320,7 @@ Apache License 2.0
 
 既存 bridge をそのまま利用し、MCP は別プロセス `mcp_server.py` で提供します。bridge は起動したままにしてください。
 
-### 起動
-
-```bash
-cd bridge
-python mcp_server.py
-```
-
 上記のデフォルトは HTTP トランスポート (`streamable-http`) で `127.0.0.1:8002` にバインドします。
-
-明示的に指定する場合:
-
-```bash
-python mcp_server.py --transport streamable-http --host 127.0.0.1 --port 8002
-```
-
-VS Code 連携など stdio トランスポートで起動する場合:
-
-```bash
-python mcp_server.py --transport stdio
-```
 
 デフォルトでは `http://127.0.0.1:8001` の bridge に接続します。必要に応じて環境変数を指定できます。
 

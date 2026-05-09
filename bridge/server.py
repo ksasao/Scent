@@ -166,7 +166,24 @@ def set_viewer_state_snapshot(payload: dict) -> int:
 def get_active_sessions() -> list[dict]:
     sessions = viewer_state_snapshot.get("sessions")
     if isinstance(sessions, list) and sessions:
-        return [dict(session) for session in sessions]
+        compact_sessions: list[dict] = []
+        for index, session in enumerate(sessions, start=1):
+            records = session.get("records")
+            records_count = session.get("records_count")
+            if records_count is None and isinstance(records, list):
+                records_count = len(records)
+
+            compact_sessions.append({
+                "index": index,
+                "session_id": session.get("session_id", ""),
+                "name": session.get("name", ""),
+                "sensor_id": session.get("sensor_id", ""),
+                "start_iso": session.get("start_iso", ""),
+                "end_iso": session.get("end_iso"),
+                "records_count": records_count or 0,
+                "running": bool(session.get("running", session.get("end_iso") is None)),
+            })
+        return compact_sessions
     return build_session_summaries()
 
 
@@ -611,6 +628,12 @@ async def download_session(session_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
     )
+
+
+@app.get("/sessions/{session_id}/download-full")
+async def download_session_full(session_id: str):
+    """セッションのZIPをダウンロードする（別名）"""
+    return await download_session(session_id)
 
 @app.get("/commands/pending")
 async def get_pending_commands():

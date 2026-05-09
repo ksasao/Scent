@@ -83,7 +83,8 @@ flowchart LR
 		GV -.->|HTTPS page uses HTTP fallback| LB
 		LB -->|HTTP bridge API| MS
 		MS -->|MCP transport| MC
-		MS -. commands .-> LV
+		MS -. bridge commands .-> LB
+		LB -. polled commands .-> LV
 ```
 
 Key points:
@@ -91,6 +92,7 @@ Key points:
 - The device connects to the browser viewer by Web Serial, not directly to the bridge.
 - The bridge runs locally on `http://127.0.0.1:8001` and receives viewer events, commands, and viewer-state snapshots.
 - The MCP server runs on `127.0.0.1:8002` (or stdio) and talks to the bridge, not to the browser directly.
+- Viewer command execution also flows through the bridge: MCP Server -> Bridge -> Viewer polling `/commands/pending`.
 - A session means the dataset created when the user presses `Start Session` in the viewer.
 - When the viewer is connected to the bridge, the bridge uses the currently connected viewer's localStorage-backed session list as the source for `sessions_list` and session ZIP downloads.
 
