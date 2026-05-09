@@ -1,8 +1,1 @@
-flask>=3.0.0
-pyserial>=3.5
-pywebview>=5.1
-pythonnet>=3.0.3
-clr-loader>=0.2.7
-waitress>=3.0.0
 Pillow>=12.0.0
-pyinstaller>=6.20.0
