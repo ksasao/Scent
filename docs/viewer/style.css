@@ -105,6 +105,59 @@
             align-items: center;
         }
 
+        .checkbox-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 36px;
+            color: var(--muted);
+            font-size: 0.9rem;
+            user-select: none;
+        }
+
+        .checkbox {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .header-checkbox-label {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            padding: 0 4px;
+        }
+
+        .bridge-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0;
+            padding-left: 2px;
+            font-size: 0.85rem;
+        }
+
+        .bridge-status-disabled {
+            color: var(--muted);
+        }
+
+        .bridge-status-connecting {
+            color: #9a6700;
+        }
+
+        .bridge-status-connected {
+            color: var(--ok);
+        }
+
+        .bridge-status-disconnected {
+            color: var(--bad);
+        }
+
+        .bridge-dot {
+            width: 8px;
+            height: 8px;
+            margin-right: 5px;
+        }
+
         .label {
             font-size: 0.9rem;
             color: var(--muted);
@@ -213,5 +266,9 @@
             .chart-wrap { height: 54vh; min-height: 340px; }
             .header-top {
                 flex-wrap: wrap;
+            }
+            .danger-zone {
+                width: 100%;
+                justify-content: space-between;
             }
         }

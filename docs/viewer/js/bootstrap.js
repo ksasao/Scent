@@ -63,6 +63,10 @@ if (window.ResizeObserver) {
     resizeObserver.observe(dom.chartCanvas.parentElement);
 }
 
+if (typeof initializeBridgeControls === "function") {
+    initializeBridgeControls();
+}
+
 refreshSessionSelect();
 if (state.sessions.length > 0) {
     dom.sessionSelect.value = state.sessions[state.sessions.length - 1].id;

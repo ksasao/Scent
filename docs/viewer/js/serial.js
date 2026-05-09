@@ -40,6 +40,35 @@ function parseSensorLine(line) {
 
 function onCrcError(line) {
     console.warn("CRC mismatch", { line });
+    if (typeof enqueueBridgeEvent === "function") {
+        enqueueBridgeEvent("crc_error", { line });
+    }
+}
+
+async function queryDeviceIdFromDevice(timeoutMs = 6000) {
+    if (!state.isConnected || !state.writer || !state.reader) {
+        throw new Error("device is not connected");
+    }
+
+    const previousSensorId = state.sensorId;
+    await sendCommand("id\n");
+
+    const startMs = Date.now();
+    while (Date.now() - startMs < timeoutMs) {
+        if (state.sensorId && state.sensorId !== "-" && state.sensorId !== previousSensorId) {
+            return state.sensorId;
+        }
+        if (state.sensorId && state.sensorId !== "-") {
+            return state.sensorId;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    if (state.sensorId && state.sensorId !== "-") {
+        return state.sensorId;
+    }
+
+    throw new Error("device id query timed out");
 }
 
 async function connectDevice() {
@@ -48,7 +77,13 @@ async function connectDevice() {
             throw new Error("Web Serial API is not supported on this browser");
         }
 
-        state.port = await navigator.serial.requestPort();
+        // Agent 経由でも接続できるよう、許可済みポートがあれば優先して使用する
+        const grantedPorts = await navigator.serial.getPorts();
+        if (grantedPorts && grantedPorts.length > 0) {
+            state.port = grantedPorts[0];
+        } else {
+            state.port = await navigator.serial.requestPort();
+        }
         await state.port.open({ baudRate: BAUD_RATE });
 
         state.writer = state.port.writable ? state.port.writable.getWriter() : null;
@@ -68,37 +103,17 @@ async function connectDevice() {
         setStatus("connected");
         updateCommUi(true);
         updateButtons();
+        if (typeof enqueueBridgeEvent === "function") {
+            enqueueBridgeEvent("device_connected", {
+                sensorId: state.sensorId,
+                connectedAt: nowIso()
+            });
+        }
 
         try {
             // Multi-cycle polling-based ID read (3 cycles x 2 seconds = up to 6 seconds)
-            let idReadSuccess = false;
-            const pollIntervalMs = 100;
-            const cycleDurationMs = 2000;
-            const maxCycles = 3;
-            
-            for (let cycle = 1; cycle <= maxCycles && !idReadSuccess; cycle++) {
-                // Send ID command at start of each cycle
-                try {
-                    await sendCommand("id\n");
-                } catch (sendErr) {
-                    console.warn(`ID command send failed on cycle ${cycle}:`, sendErr);
-                }
-                
-                // Poll for response during this cycle (3 seconds)
-                const cycleStartMs = Date.now();
-                while (!idReadSuccess && Date.now() - cycleStartMs < cycleDurationMs) {
-                    if (state.sensorId && state.sensorId !== "-") {
-                        idReadSuccess = true;
-                        console.log(`ID read successful on cycle ${cycle}`);
-                    } else {
-                        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-                    }
-                }
-            }
-            
-            if (!idReadSuccess) {
-                console.warn(`ID read timeout (${maxCycles * cycleDurationMs / 1000} seconds elapsed)`);
-            }
+            const deviceId = await queryDeviceIdFromDevice();
+            console.log(`ID read successful: ${deviceId}`);
         } catch (idErr) {
             console.warn("ID read failed:", idErr);
         }
@@ -150,6 +165,12 @@ async function disconnectDevice(silent) {
     dom.latestRxLine.textContent = "-";
     updateButtons();
     updateCommUi(false);
+    if (typeof enqueueBridgeEvent === "function") {
+        enqueueBridgeEvent("device_disconnected", {
+            sensorId: state.sensorId,
+            disconnectedAt: nowIso()
+        });
+    }
 
     if (!silent) {
         setStatus("disconnected");
@@ -240,6 +261,14 @@ function handleSerialLine(line) {
     state.currentSession.records.push(record);
     updateSessionInfo();
     schedulePersist();
+
+    if (typeof enqueueBridgeEvent === "function") {
+        enqueueBridgeEvent("data_record", {
+            sessionId: state.currentSession.id,
+            sensorId: state.currentSession.sensorId,
+            record
+        });
+    }
 
     if (state.xAutoRange) {
         chart.options.scales.x.min = undefined;

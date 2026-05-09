@@ -3,7 +3,12 @@
         setStatus("connect first");
         return;
     }
-    if (state.currentSession && !state.currentSession.endIso) {
+    const runningSession = getRunningSession();
+    if (runningSession) {
+        state.currentSession = runningSession;
+        drawCurrentSession();
+        updateSessionInfo();
+        updateButtons();
         setStatus("session already running");
         return;
     }
@@ -30,24 +35,72 @@
     dom.sessionSelect.value = state.currentSession.id;
     updateSessionInfo();
     updateButtons();
+    if (typeof enqueueBridgeEvent === "function") {
+        enqueueBridgeEvent("session_started", {
+            sessionId: state.currentSession.id,
+            name: state.currentSession.name,
+            sensorId: state.currentSession.sensorId,
+            startIso: state.currentSession.startIso
+        });
+    }
     setStatus("session started");
 }
 
-function stopSession() {
-    if (!state.currentSession || state.currentSession.endIso) {
+function getRunningSession() {
+    for (let i = state.sessions.length - 1; i >= 0; i -= 1) {
+        const session = state.sessions[i];
+        if (session && !session.endIso) {
+            return session;
+        }
+    }
+    return null;
+}
+
+function stopSession(sessionId = null) {
+    let target = null;
+    if (sessionId) {
+        target = getSessionById(sessionId);
+        if (target && target.endIso) {
+            target = null;
+        }
+    }
+    if (!target && state.currentSession && !state.currentSession.endIso) {
+        target = state.currentSession;
+    }
+    if (!target) {
+        target = getRunningSession();
+    }
+    if (!target) {
         return;
     }
-    state.currentSession.endIso = nowIso();
+
+    state.currentSession = target;
+    target.endIso = nowIso();
     saveSessions();
     refreshSessionSelect();
+    dom.sessionSelect.value = target.id;
     updateSessionInfo();
     updateButtons();
+    if (typeof enqueueBridgeEvent === "function") {
+        enqueueBridgeEvent("session_ended", {
+            sessionId: target.id,
+            name: target.name,
+            sensorId: target.sensorId,
+            startIso: target.startIso,
+            endIso: target.endIso,
+            records: target.records.length
+        });
+    }
     setStatus("session ended");
 }
 
 function getSelectedSession() {
     const id = dom.sessionSelect.value;
     return state.sessions.find((s) => s.id === id) || null;
+}
+
+function getSessionById(sessionId) {
+    return state.sessions.find((s) => s.id === sessionId) || null;
 }
 
 function escapeCsv(value) {
@@ -159,14 +212,7 @@ async function downloadSessionZip(session) {
     }
 
     const stem = getSessionFileStem(session);
-    const rawCsv = buildRawSessionCsvText(session);
-    const pythonDataCsv = buildPythonDataCsvText(session);
-
-    const zip = new JSZip();
-    zip.file(`${stem}_raw.csv`, rawCsv);
-    zip.file(`${stem}_data.csv`, pythonDataCsv);
-
-    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const zipBlob = await buildSessionZipBlob(session);
     const url = URL.createObjectURL(zipBlob);
     const a = document.createElement("a");
     a.href = url;
@@ -175,6 +221,17 @@ async function downloadSessionZip(session) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+}
+
+async function buildSessionZipBlob(session) {
+    const stem = getSessionFileStem(session);
+    const rawCsv = buildRawSessionCsvText(session);
+    const pythonDataCsv = buildPythonDataCsvText(session);
+
+    const zip = new JSZip();
+    zip.file(`${stem}_raw.csv`, rawCsv);
+    zip.file(`${stem}_data.csv`, pythonDataCsv);
+    return zip.generateAsync({ type: "blob" });
 }
 
 function deleteSelectedSession() {

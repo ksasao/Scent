@@ -18,6 +18,13 @@
                 <div class="header-top">
                     <h1>Scent Static Web Viewer</h1>
                     <div class="danger-zone">
+                        <label class="checkbox-label header-checkbox-label" for="bridgeEnabledInput">
+                            <input id="bridgeEnabledInput" class="checkbox" type="checkbox" />
+                            localhost bridge connection
+                            <span id="bridgeStatusText" class="bridge-status bridge-status-disabled">
+                                <span id="bridgeStatusDot" class="dot bridge-dot"></span>disabled
+                            </span>
+                        </label>
                         <button id="deleteAllBtn" class="btn danger-soft" type="button">Delete All Sessions</button>
                     </div>
                 </div>
@@ -56,6 +63,7 @@
     </div>
     <script src="./js/core.js"></script>
     <script src="./js/chart.js"></script>
+    <script src="./js/bridge.js"></script>
     <script src="./js/serial.js"></script>
     <script src="./js/session.js"></script>
     <script src="./js/bootstrap.js"></script>

@@ -78,5 +78,8 @@ dist/
 Python/last_good_port.txt
 Python/dist/**/last_good_port.txt
 
+# Agent download artifacts
+agent/downloads/
+
 # Arduino build output
 Arduino/**/build/

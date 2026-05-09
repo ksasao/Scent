@@ -1,0 +1,18 @@
+{
+  "servers": {
+    "scent-bridge-local": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/bridge/venv/Scripts/python.exe",
+      "args": [
+        "mcp_server.py",
+        "--transport",
+        "stdio"
+      ],
+      "cwd": "${workspaceFolder}/bridge",
+      "env": {
+        "SCENT_BRIDGE_URL": "http://127.0.0.1:8001",
+        "SCENT_COMMAND_WAIT_SECONDS": "12"
+      }
+    }
+  }
+}
