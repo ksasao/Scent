@@ -43,6 +43,13 @@ device_state = {
     "last_sensor_id": None,
 }
 
+viewer_state_snapshot = {
+    "origin": None,
+    "page_url": None,
+    "sessions": [],
+    "updated_at": None,
+}
+
 RECEIVING_WINDOW_SECONDS = 15
 
 
@@ -101,6 +108,75 @@ def get_session_start_iso(data: dict, fallback: str) -> str:
 
 def get_session_end_iso(data: dict, fallback: str) -> str:
     return str(extract_field(data, "endIso", "end_iso") or fallback)
+
+
+def normalize_viewer_session(session: dict) -> dict | None:
+    if not isinstance(session, dict):
+        return None
+
+    session_id = str(session.get("id") or session.get("session_id") or "").strip()
+    if not session_id:
+        return None
+
+    records = session.get("records")
+    if not isinstance(records, list):
+        records = []
+
+    normalized_records = [record for record in records if isinstance(record, dict)]
+    start_iso = str(session.get("startIso") or session.get("start_iso") or "").strip()
+    end_iso_raw = session.get("endIso") if "endIso" in session else session.get("end_iso")
+    end_iso = str(end_iso_raw).strip() if end_iso_raw else None
+
+    return {
+        "index": 0,
+        "session_id": session_id,
+        "name": str(session.get("name") or ""),
+        "sensor_id": str(session.get("sensorId") or session.get("sensor_id") or current_device_id() or ""),
+        "start_iso": start_iso,
+        "end_iso": end_iso,
+        "records": normalized_records,
+        "records_count": len(normalized_records),
+        "running": not bool(end_iso),
+    }
+
+
+def set_viewer_state_snapshot(payload: dict) -> int:
+    if not isinstance(payload, dict):
+        return 0
+
+    sessions_payload = payload.get("sessions")
+    normalized_sessions: list[dict] = []
+    if isinstance(sessions_payload, list):
+        for item in sessions_payload:
+            normalized = normalize_viewer_session(item)
+            if normalized:
+                normalized_sessions.append(normalized)
+
+    normalized_sessions.sort(key=lambda item: item.get("start_iso") or "", reverse=True)
+    for index, session in enumerate(normalized_sessions, start=1):
+        session["index"] = index
+
+    viewer_state_snapshot["origin"] = str(payload.get("origin") or "").strip() or None
+    viewer_state_snapshot["page_url"] = str(payload.get("page_url") or "").strip() or None
+    viewer_state_snapshot["sessions"] = normalized_sessions
+    viewer_state_snapshot["updated_at"] = time.time()
+    return len(normalized_sessions)
+
+
+def get_active_sessions() -> list[dict]:
+    sessions = viewer_state_snapshot.get("sessions")
+    if isinstance(sessions, list) and sessions:
+        return [dict(session) for session in sessions]
+    return build_session_summaries()
+
+
+def get_active_session_details(session_id: str) -> dict | None:
+    sessions = viewer_state_snapshot.get("sessions")
+    if isinstance(sessions, list) and sessions:
+        for session in sessions:
+            if session.get("session_id") == session_id:
+                return dict(session)
+    return get_session_details(session_id)
 
 
 def build_session_summaries() -> list[dict]:
@@ -455,6 +531,20 @@ async def health_check():
         "connected_viewers": len(connected_viewers),
         "current_device_id": current_device_id(),
         "device_receiving": snapshot,
+        "viewer_state_origin": viewer_state_snapshot.get("origin"),
+        "viewer_state_updated_at": viewer_state_snapshot.get("updated_at"),
+    }
+
+
+@app.post("/viewer-state")
+async def update_viewer_state(payload: dict):
+    """Viewer localStorage ベースの状態スナップショットを受け取る"""
+    count = set_viewer_state_snapshot(payload)
+    return {
+        "received": True,
+        "sessions": count,
+        "origin": viewer_state_snapshot.get("origin"),
+        "page_url": viewer_state_snapshot.get("page_url"),
     }
 
 @app.post("/event")
@@ -499,16 +589,17 @@ async def get_events(skip: int = 0, limit: int = 100):
 @app.get("/sessions")
 async def get_sessions():
     """セッション一覧を取得"""
-    sessions = build_session_summaries()
+    sessions = get_active_sessions()
     return {
         "total": len(sessions),
         "sessions": sessions,
+        "source_origin": viewer_state_snapshot.get("origin"),
     }
 
 @app.get("/sessions/{session_id}/download")
 async def download_session(session_id: str):
     """セッションのZIPをダウンロードする"""
-    session = get_session_details(session_id)
+    session = get_active_session_details(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -701,6 +792,8 @@ async def websocket_viewer(websocket: WebSocket):
                     "event_queue_size": event_queue.size(),
                     "pending_commands": command_queue.get_pending_count(),
                     "device_receiving": get_device_receiving_snapshot(),
+                    "viewer_state_origin": viewer_state_snapshot.get("origin"),
+                    "sessions": get_active_sessions(),
                 }))
 
     except WebSocketDisconnect:

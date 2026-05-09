@@ -144,6 +144,9 @@ function loadSessions() {
 
 function saveSessions() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.sessions));
+    if (typeof scheduleViewerStateSync === "function") {
+        scheduleViewerStateSync();
+    }
 }
 
 function schedulePersist() {

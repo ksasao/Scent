@@ -23,7 +23,8 @@ const bridgeState = {
     queue: [],
     lastDataRecordSentAt: 0,
     lastHandledCommandId: null,
-    sequence: 0
+    sequence: 0,
+    viewerStateSyncTimer: null
 };
 
 function nextBridgeSequence() {
@@ -292,6 +293,7 @@ async function probeBridgeConnection() {
         if (response.ok) {
             bridgeState.connected = true;
             updateBridgeUi("connected");
+            scheduleViewerStateSync();
             return;
         }
     } catch (err) {
@@ -308,6 +310,54 @@ function buildBridgeEnvelope(eventType, data) {
         ts: nowIso(),
         data
     };
+}
+
+function buildViewerStatePayload() {
+    const sessions = Array.isArray(state?.sessions)
+        ? state.sessions.map((session) => ({
+            id: session?.id || "",
+            name: session?.name || "",
+            startIso: session?.startIso || "",
+            endIso: session?.endIso || null,
+            sensorId: session?.sensorId || "",
+            records: Array.isArray(session?.records) ? session.records : []
+        }))
+        : [];
+
+    return {
+        origin: window.location.origin,
+        page_url: window.location.href,
+        sessions,
+    };
+}
+
+function scheduleViewerStateSync() {
+    if (bridgeState.viewerStateSyncTimer) {
+        clearTimeout(bridgeState.viewerStateSyncTimer);
+    }
+    bridgeState.viewerStateSyncTimer = setTimeout(() => {
+        bridgeState.viewerStateSyncTimer = null;
+        void syncViewerStateToBridge();
+    }, 250);
+}
+
+async function syncViewerStateToBridge() {
+    if (!bridgeState.enabled || !bridgeState.httpUrl || !bridgeState.connected) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${bridgeState.httpUrl}/viewer-state`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildViewerStatePayload())
+        });
+        if (!response.ok) {
+            throw new Error(`viewer state sync failed: ${response.status}`);
+        }
+    } catch (err) {
+        console.warn("Failed to sync viewer state to bridge", err);
+    }
 }
 
 function enqueueBridgeEvent(eventType, data) {
@@ -481,6 +531,7 @@ function connectBridge() {
                 bridgeState.reconnectTimer = null;
             }
             syncStoredSessionsToBridge();
+            scheduleViewerStateSync();
             flushBridgeQueueSoon();
             startBridgeCommandPolling();
             socket.send(JSON.stringify({ type: "query_state" }));
@@ -623,6 +674,11 @@ async function pollPendingBridgeCommand() {
         if (!response.ok) {
             return;
         }
+        if (!bridgeState.connected) {
+            bridgeState.connected = true;
+            updateBridgeUi("connected");
+        }
+        scheduleViewerStateSync();
         const command = await response.json();
         if (!command || !command.id || !command.type) {
             return;
@@ -633,6 +689,7 @@ async function pollPendingBridgeCommand() {
         bridgeState.lastHandledCommandId = command.id;
         await handleBridgeMessage(command);
     } catch (err) {
+        bridgeState.connected = false;
         console.warn("Bridge command poll failed", err);
     }
 }
