@@ -258,7 +258,7 @@ async def execute_custom_command(payload: dict):
 
 ## ライセンス
 
-MIT
+Apache License 2.0
 
 ## MCP サーバー（案1: 別プロセスアダプタ）
 

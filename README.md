@@ -13,18 +13,51 @@ This repository contains:
 ```
 Arduino/
 	Scent/
-		Scent.ino         # M5Atom + BME688 firmware
-bridge/
-	server.py          # FastAPI bridge on localhost:8001
-	mcp_server.py      # MCP adapter on localhost:8002 or stdio
+		Scent.ino                    # M5Atom Lite + BME688 firmware
+		build/                       # Compiled hex files
+
+bridge/                              # Python FastAPI bridge service
+	server.py                        # FastAPI on localhost:8001
+	mcp_server.py                    # MCP adapter on localhost:8002 or stdio
+	config.py                        # Configuration and env var loading
+	requirements.txt                 # Python dependencies (FastAPI, uvicorn, mcp, etc.)
+	README.md                        # Bridge API documentation
+
 docs/
-	viewer/            # Static Web Serial viewer (localhost or GitHub Pages)
-Python/
-	serial_plot.py      # Flask + serial reader + logger
-	templates/index.html
-	requirements.txt
-	logs/               # Runtime-generated raw logs
-	data/               # Runtime-generated aggregated CSV
+	index.html                       # Main documentation index
+	viewer/                          # Static Web Serial viewer (localhost:8000 + GitHub Pages)
+		index.html                   # Viewer app entry point
+		js/
+			core.js                  # State management, session persistence
+			bridge.js                # Bridge connectivity & auto-detection
+			device.js                # Web Serial device handling
+		css/
+			style.css                # Viewer styles
+	firmware/                        # Web firmware flasher for browser
+		flasher.js                   # ESP32 flash download mode integration
+		manifest.json                # Web app manifest
+	architecture-overview.svg        # System architecture diagram (legacy)
+
+Python/                              # Utility scripts
+	make_icon.py                     # Icon generation utility
+	sync_firmware_assets.py          # Sync firmware assets to docs/firmware/
+	requirements.txt                 # (legacy/unused)
+	README.md                        # Legacy setup notes
+	venv/                            # Python virtual environment
+
+WebFlasher/                          # Alternative firmware flasher (standalone)
+	index.html                       # Flasher entry point
+	flasher.js                       # Flash algorithm
+	manifest.json                    # Web app manifest
+	style.css                        # Flasher styles
+	firmware/                        # Firmware binary directory
+
+apps/
+	latest/                          # App release artifacts
+		download/                    # Latest executable downloads
+
+LICENSE                              # Apache License 2.0
+README.md                            # This file
 ```
 
 ## Current Architecture
@@ -86,106 +119,61 @@ For bridge-specific setup and API details, see `bridge/README.md`.
 - Watchdog reset if no valid measurement is received for 10 seconds
 - Appends **CRC-8** (AUTOSAR polynomial `0x31`) to each data line
 
-### Python (`Python/serial_plot.py`)
-- Reads serial data from COM port (`115200` by default)
-- Validates incoming lines with the same **CRC-8** algorithm
-- Realtime web graph (Chart.js) for channels `D0-D9`
-- X-axis uses **relative time in seconds** based on Python receive time
-- Reset button for baseline/delta mode
-- Auto-reconnect for COM disconnects with exponential backoff
-- Logs raw serial lines and writes aggregated rows on D9 timing
-- Windows desktop launcher via embedded WebView2
+### Viewer (`docs/viewer/`)
+- Static HTML/JS Web Serial viewer
+- Served from `http://localhost:8000/viewer/` (local development) or `https://ksasao.github.io/Scent/viewer/` (GitHub Pages)
+- Per-origin localStorage session storage (localhost sessions separate from GitHub Pages sessions)
+- Auto-detects bridge URL from localhost:8001 candidates
+- Syncs viewer state to bridge via `/viewer-state` POST
+- Session lifecycle: created when user presses "Start Session", downloaded as ZIP via bridge
 
-## Serial Data Format
+## Getting Started
 
-Data lines sent from Arduino:
+### Prerequisites
+- Arduino IDE with M5Atom Lite board support
+- Python 3.8+ for bridge and utilities
+- Modern web browser (Chrome/Edge 90+) for Web Serial API support
 
-```
-index,temp,humidity,pressure,current,crc
-```
-
-Example:
-
-```
-3,24.71,42.51,100842.89,10.337,A4
-```
-
-Notes:
-- `index`: `0-9` (gas heater step / channel)
-- `current`: `log(gas_resistance)` with 3 decimals
-- `crc`: CRC-8 over the text before the final comma
-
-## Python App Setup
-
-### Requirements
-- Python 3.10+ recommended
-- Windows COM serial environment
-
-Install dependencies:
+### Setup Bridge (FastAPI + MCP)
 
 ```powershell
-cd Python
+cd bridge
 python -m pip install -r requirements.txt
+python server.py          # Runs on http://127.0.0.1:8001
 ```
 
-## Run
-
-Start with explicit COM port:
+In another terminal:
 
 ```powershell
-cd Python
-python serial_plot.py --port COM3 --baudrate 115200 --host 127.0.0.1 --web-port 5000
+cd bridge
+python mcp_server.py --transport stdio     # Or --transport streamable-http --port 8002
 ```
 
-Or run without `--port`:
+### Setup Viewer
+
+Local development (with live reload):
 
 ```powershell
-cd Python
-python serial_plot.py
+cd docs/viewer
+python -m http.server 8000
 ```
 
-When `--port` is omitted:
-- If the last successfully communicating COM port exists, it is auto-selected at startup.
-- Otherwise, the app starts disconnected and COM selection/connection is done from the browser UI.
-- Interactive COM selection in the command line is not used.
+Then open `http://localhost:8000/viewer/` in your browser.
 
-Open in browser:
+### Upload Firmware
 
-```
-http://127.0.0.1:5000
-```
+1. Connect M5Atom Lite via USB
+2. Open `Arduino/Scent/Scent.ino` in Arduino IDE
+3. Select board: **M5Atom Lite**
+4. Select COM port and upload
 
-Desktop mode on Windows 11:
+### Use the Viewer
 
-```powershell
-cd Python
-python desktop_main.py --port COM3
-```
-
-Build distributable EXE:
-
-```powershell
-cd Python
-py -m pip install -r requirements.txt
-py make_icon.py
-py -m PyInstaller --noconfirm --clean --windowed --onedir --name Scent --icon Scent.ico --add-data "templates;templates" --add-data "static;static" --collect-all webview desktop_main.py
-```
-
-The distributable output is created under `Python/dist/Scent/`.
-
-## Runtime Outputs
-
-- Raw log files: `Python/logs/YYYYMMDD_HHMMSS.csv`
-	- Format: `python_timestamp,raw_serial_line`
-- Aggregated files: `Python/data/YYYYMMDD_HHMMSS.csv`
-	- Header: `date,temperature,humidity,pressure,d0,d1,...,d9`
-	- One row is emitted when channel `9` is received
-
-## Web API (used by UI)
-
-- `GET /` : dashboard
-- `GET /data` : latest plot payload
-- `POST /reset` : set current values as baseline
+1. Open `http://localhost:8000/viewer/` (or GitHub Pages version)
+2. Click "Connect" and select M5Atom Lite from Web Serial port list
+3. Press "Start Session" to begin recording
+4. Data saves to browser localStorage (separate per origin)
+5. Download session as ZIP via the UI
 - `GET /id` : request sensor unique ID over serial
 - `GET /api/ports` : list available COM ports
 - `POST /api/connect/<port>` : connect to specified COM port
