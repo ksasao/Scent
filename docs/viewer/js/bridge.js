@@ -101,6 +101,26 @@ function saveBridgeUrlPreference(url) {
     }
 }
 
+function clearViewerSessionsOnBridgeUrlChange(newUrl) {
+    // Bridge URL が変わった場合、Viewer側のセッション履歴をクリアして、新接続先から再取得する
+    try {
+        const previousUrl = localStorage.getItem(BRIDGE_URL_PREVIOUS_STORAGE_KEY) || "";
+        const normalizedNew = (newUrl || "").trim();
+        const normalizedPrev = (previousUrl || "").trim();
+
+        if (normalizedPrev && normalizedNew !== normalizedPrev) {
+            console.log(`Bridge URL changed from ${normalizedPrev} to ${normalizedNew}, clearing session cache`);
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(BRIDGE_SESSION_SYNC_KEY);
+        }
+
+        localStorage.setItem(BRIDGE_URL_PREVIOUS_STORAGE_KEY, normalizedNew);
+    } catch (err) {
+        console.warn("Failed to handle bridge URL change", err);
+    }
+}
+
+
 async function probeBridgeUrlCandidate(url) {
     try {
         const controller = new AbortController();
@@ -153,6 +173,9 @@ async function initBridgeUrl() {
         bridgeState.wsUrl = null;
         return;
     }
+
+    // URL 変更検知: 前回と異なれば セッション履歴をクリア
+    clearViewerSessionsOnBridgeUrlChange(httpUrl);
 
     bridgeState.httpUrl = httpUrl;
     

@@ -211,6 +211,45 @@ def get_session_details(session_id: str) -> dict | None:
     return session
 
 
+def get_running_session_summaries() -> list[dict]:
+    """現在実行中のセッション一覧を返す"""
+    return [summary for summary in build_session_summaries() if summary.get("running")]
+
+
+def close_running_sessions_before_start() -> list[str]:
+    """新しいセッション開始前に、既存の running セッションを自動終了する"""
+    running_sessions = get_running_session_summaries()
+    if not running_sessions:
+        return []
+
+    ended_session_ids: list[str] = []
+    end_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+
+    for summary in running_sessions:
+        session_id = str(summary.get("session_id") or "").strip()
+        if not session_id:
+            continue
+
+        ended_event = Event(
+            EventType.SESSION_ENDED,
+            {
+                "sessionId": session_id,
+                "name": str(summary.get("name") or ""),
+                "sensorId": str(summary.get("sensor_id") or current_device_id() or ""),
+                "endIso": end_iso,
+            },
+            source="bridge",
+        )
+        event_queue.enqueue(ended_event)
+        update_device_state(ended_event.type, ended_event.data)
+        ended_session_ids.append(session_id)
+
+    if ended_session_ids:
+        logger.info("Auto-closed running sessions before start: %s", ", ".join(ended_session_ids))
+
+    return ended_session_ids
+
+
 def make_session_stem(session: dict) -> str:
     raw_name = (session.get("name") or "").strip()
     start = str(session.get("start_iso") or "").replace(":", "-").replace(".", "-")
@@ -540,6 +579,7 @@ async def enqueue_command(payload: dict):
     elif command_type == CommandType.DISCONNECT_DEVICE:
         cmd = CommandFactory.create_disconnect_device()
     elif command_type == CommandType.START_SESSION:
+        close_running_sessions_before_start()
         name = command_payload.get("name")
         cmd = CommandFactory.create_start_session(str(name).strip() if name is not None else None)
     elif command_type == CommandType.STOP_SESSION:
