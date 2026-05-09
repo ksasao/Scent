@@ -2,6 +2,7 @@
 const STORAGE_KEY = "scent.sessions.v1";
 const BRIDGE_ENABLED_STORAGE_KEY = "scent.bridge.enabled.v1";
 const BRIDGE_SESSION_SYNC_KEY = "scent.bridge.synced.sessions.v1";
+const BRIDGE_URL_STORAGE_KEY = "scent.bridge.url.v1";
 const STRICT_CRC = true;
 const CRC8_TABLE = [
     0x00, 0x31, 0x62, 0x53, 0xC4, 0xF5, 0xA6, 0x97, 0xB9, 0x88, 0xDB, 0xEA, 0x7D, 0x4C, 0x1F, 0x2E,

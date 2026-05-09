@@ -1,13 +1,18 @@
-const BRIDGE_HTTP_URL = "http://127.0.0.1:8001";
-const BRIDGE_WS_URL = window.location.protocol === "https:"
-    ? null
-    : "ws://127.0.0.1:8001/ws/viewer";
+// Bridge URL candidates to probe (in order of preference)
+const BRIDGE_URL_CANDIDATES = [
+    "http://127.0.0.1:8001",
+    "http://localhost:8001",
+];
+
 const BRIDGE_BATCH_SIZE = 10;
 const BRIDGE_FLUSH_INTERVAL_MS = 1000;
 const BRIDGE_SAMPLE_INTERVAL_MS = 1000;
 const BRIDGE_COMMAND_POLL_INTERVAL_MS = 2000;
+const BRIDGE_PROBE_TIMEOUT_MS = 3000;
 
 const bridgeState = {
+    httpUrl: null,
+    wsUrl: null,
     socket: null,
     connected: false,
     enabled: false,
@@ -79,6 +84,88 @@ function saveBridgeEnabledPreference(enabled) {
     }
 }
 
+function loadBridgeUrlPreference() {
+    try {
+        return localStorage.getItem(BRIDGE_URL_STORAGE_KEY) || null;
+    } catch (err) {
+        console.warn("Failed to load bridge URL preference", err);
+        return null;
+    }
+}
+
+function saveBridgeUrlPreference(url) {
+    try {
+        localStorage.setItem(BRIDGE_URL_STORAGE_KEY, url || "");
+    } catch (err) {
+        console.warn("Failed to save bridge URL preference", err);
+    }
+}
+
+async function probeBridgeUrlCandidate(url) {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), BRIDGE_PROBE_TIMEOUT_MS);
+        
+        const response = await fetch(`${url}/health`, {
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+            console.log(`Bridge URL probe succeeded: ${url}`);
+            return url;
+        }
+    } catch (err) {
+        console.debug(`Bridge URL probe failed for ${url}:`, err.message);
+    }
+    return null;
+}
+
+async function autoProbeBridgeUrl() {
+    // First try saved preference
+    const savedUrl = loadBridgeUrlPreference();
+    if (savedUrl) {
+        const result = await probeBridgeUrlCandidate(savedUrl);
+        if (result) {
+            return result;
+        }
+        console.warn(`Saved bridge URL ${savedUrl} is no longer available, reprobing...`);
+    }
+
+    // Try all candidates
+    for (const url of BRIDGE_URL_CANDIDATES) {
+        const result = await probeBridgeUrlCandidate(url);
+        if (result) {
+            saveBridgeUrlPreference(url);
+            return url;
+        }
+    }
+
+    console.error("No bridge URL candidates responded to probe");
+    return null;
+}
+
+async function initBridgeUrl() {
+    const httpUrl = await autoProbeBridgeUrl();
+    if (!httpUrl) {
+        bridgeState.httpUrl = null;
+        bridgeState.wsUrl = null;
+        return;
+    }
+
+    bridgeState.httpUrl = httpUrl;
+    
+    if (window.location.protocol === "https:") {
+        bridgeState.wsUrl = null;
+    } else {
+        bridgeState.wsUrl = httpUrl.replace(/^http:/, "ws:") + "/ws/viewer";
+    }
+
+    console.log(`Bridge configured: HTTP=${bridgeState.httpUrl}, WS=${bridgeState.wsUrl}`);
+}
+
+
 function buildSessionSyncSignature(sessions) {
     if (!Array.isArray(sessions) || sessions.length === 0) {
         return "empty";
@@ -112,7 +199,10 @@ function saveLastBridgeSessionSyncSignature(signature) {
 
 async function getBridgeSessionCount() {
     try {
-        const response = await fetch(`${BRIDGE_HTTP_URL}/sessions`);
+        if (!bridgeState.httpUrl) {
+            return null;
+        }
+        const response = await fetch(`${bridgeState.httpUrl}/sessions`);
         if (!response.ok) {
             return null;
         }
@@ -132,9 +222,15 @@ function setBridgeEnabled(enabled) {
     }
     if (bridgeState.enabled) {
         updateBridgeUi("connecting");
-        startBridgeCommandPolling();
-        ensureBridgeConnection();
-        flushBridgeQueueSoon();
+        // Initialize bridge URL first (async), then connect
+        initBridgeUrl().then(() => {
+            startBridgeCommandPolling();
+            ensureBridgeConnection();
+            flushBridgeQueueSoon();
+        }).catch((err) => {
+            console.error("Failed to initialize bridge URL", err);
+            updateBridgeUi("disconnected");
+        });
         return;
     }
     disconnectBridge();
@@ -151,14 +247,25 @@ function initializeBridgeControls() {
     }
     updateBridgeUi(bridgeState.enabled ? "disconnected" : "disabled");
     if (bridgeState.enabled) {
-        startBridgeCommandPolling();
-        ensureBridgeConnection();
+        // Initialize bridge URL first (async), then connect
+        initBridgeUrl().then(() => {
+            startBridgeCommandPolling();
+            ensureBridgeConnection();
+        }).catch((err) => {
+            console.error("Failed to initialize bridge URL", err);
+            updateBridgeUi("disconnected");
+        });
     }
 }
 
 async function probeBridgeConnection() {
     try {
-        const response = await fetch(`${BRIDGE_HTTP_URL}/health`);
+        if (!bridgeState.httpUrl) {
+            bridgeState.connected = false;
+            updateBridgeUi(bridgeState.enabled ? "disconnected" : "disabled");
+            return;
+        }
+        const response = await fetch(`${bridgeState.httpUrl}/health`);
         if (response.ok) {
             bridgeState.connected = true;
             updateBridgeUi("connected");
@@ -227,9 +334,14 @@ async function flushBridgeQueue() {
         return;
     }
 
+    if (!bridgeState.httpUrl) {
+        ensureBridgeConnection();
+        return;
+    }
+
     try {
         for (const event of batch) {
-            const response = await fetch(`${BRIDGE_HTTP_URL}/event`, {
+            const response = await fetch(`${bridgeState.httpUrl}/event`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -315,7 +427,7 @@ function ensureBridgeConnection() {
     if (!bridgeState.enabled) {
         return;
     }
-    if (!BRIDGE_WS_URL) {
+    if (!bridgeState.wsUrl) {
         void probeBridgeConnection();
         return;
     }
@@ -329,13 +441,13 @@ function connectBridge() {
     if (!bridgeState.enabled) {
         return;
     }
-    if (!BRIDGE_WS_URL) {
+    if (!bridgeState.wsUrl) {
         void probeBridgeConnection();
         return;
     }
     updateBridgeUi("connecting");
     try {
-        const socket = new WebSocket(BRIDGE_WS_URL);
+        const socket = new WebSocket(bridgeState.wsUrl);
         bridgeState.socket = socket;
 
         socket.addEventListener("open", () => {
@@ -385,7 +497,7 @@ function scheduleBridgeReconnect() {
     if (!bridgeState.enabled) {
         return;
     }
-    if (!BRIDGE_WS_URL) {
+    if (!bridgeState.wsUrl) {
         bridgeState.reconnectTimer = setTimeout(() => {
             bridgeState.reconnectTimer = null;
             void probeBridgeConnection();
@@ -480,11 +592,11 @@ function startBridgeCommandPolling() {
 }
 
 async function pollPendingBridgeCommand() {
-    if (!bridgeState.enabled) {
+    if (!bridgeState.enabled || !bridgeState.httpUrl) {
         return;
     }
     try {
-        const response = await fetch(`${BRIDGE_HTTP_URL}/commands/pending`);
+        const response = await fetch(`${bridgeState.httpUrl}/commands/pending`);
         if (!response.ok) {
             return;
         }
@@ -683,7 +795,10 @@ async function sendBridgeCommandResult(commandId, result) {
         return;
     }
 
-    await fetch(`${BRIDGE_HTTP_URL}/commands/execute/${encodeURIComponent(commandId)}`, {
+    if (!bridgeState.httpUrl) {
+        return;
+    }
+    await fetch(`${bridgeState.httpUrl}/commands/execute/${encodeURIComponent(commandId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(result)
