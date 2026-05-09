@@ -218,21 +218,23 @@
       <div class="card-body">
         <p>
           ブラウザのみで M5Atom Lite と通信し、リアルタイムグラフを確認します。
-          取得データはブラウザのローカルストレージへセッション単位で保存され、CSVとしてダウンロードできます。
+          取得データはブラウザのローカルストレージへセッション単位で保存され、ZIPとしてダウンロードできます。
         </p>
 
         <ol>
           <li>M5Atom Lite を USB ケーブルで PC に接続する</li>
           <li>下の「Web可視化ページを開く」をクリックする</li>
           <li><strong>Connect</strong> を押してシリアルポートを選択する</li>
-          <li><strong>Start Session</strong> でデータ取得を開始し、必要に応じて <strong>Auto stop [s]</strong> を設定する</li>
+          <li><strong>Device ID</strong> が表示されたら <strong>Session name</strong> を必要に応じて入力する</li>
+          <li><strong>Start Session</strong> でデータ取得を開始する</li>
           <li><strong>Stop Session</strong> で終了すると1セッションとして保存される</li>
-          <li><strong>Download CSV</strong> で保存済みセッションをダウンロードする</li>
+          <li><strong>Download ZIP</strong> で保存済みセッションをダウンロードする</li>
         </ol>
 
         <div class="note">
           <strong>動作環境:</strong> Chrome / Edge / Opera（Web Serial API が必要です）<br>
           <strong>注意:</strong> 取得データはブラウザのローカルストレージに保存されます。別ブラウザやシークレットモードでは共有されません。<br>
+          ZIP 内には生データ CSV と、Python/data 形式の CSV が含まれます。
         </div>
 
         <br>
