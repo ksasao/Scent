@@ -260,9 +260,9 @@ async def execute_custom_command(payload: dict):
 
 Apache License 2.0
 
-## MCP サーバー（案1: 別プロセスアダプタ）
+## MCP サーバー
 
-既存 bridge をそのまま利用し、MCP は別プロセス `mcp_server.py` で提供します。
+既存 bridge をそのまま利用し、MCP は別プロセス `mcp_server.py` で提供します。bridge は起動したままにしてください。
 
 ### 起動
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scent – 匂いセンサ 利用ガイド</title>
+  <title>BME688を利用した匂い測定</title>
   <link rel="icon" href="./favicon.ico" type="image/x-icon" />
   <link rel="shortcut icon" href="./favicon.ico" type="image/x-icon" />
   <style>
@@ -160,6 +160,40 @@
 
     .note strong { color: #3a2f00; }
 
+    /* ---- image gallery ---- */
+    .gallery {
+      display: flex;
+      gap: 16px;
+      margin-top: 24px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .gallery img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 10px;
+      border: 1px solid #d6e2f0;
+      flex: 1;
+      min-width: 280px;
+      object-fit: cover;
+    }
+
+    .hero ul {
+      line-height: 2.2;
+    }
+
+    @media (max-width: 640px) {
+      .gallery {
+        flex-direction: column;
+      }
+
+      .gallery img {
+        min-width: 100%;
+      }
+    }
+
     @keyframes rise {
       from { transform: translateY(10px); opacity: 0; }
       to   { transform: translateY(0);   opacity: 1; }
@@ -174,9 +208,24 @@
     <div class="hero">
       <h1>匂いセンサ 利用ガイド</h1>
       <p>
-        M5Atom Lite + ENV Pro SENSOR (BME688) を使った匂いセンサシステムの<br>
-        セットアップ手順です。
+        M5Atom Lite + ENV Pro SENSOR (BME688) を使った匂いセンサの<br>
+        セットアップ手順です。ブラウザのみでM5Atom Liteのファームウェア更新やリアルタイムグラフの確認、データのダウンロードができます。
+        また、MCPサーバを<a href="https://github.com/ksasao/Scent/tree/main/bridge">設定する</a>ことで各種 AI ツールと連携して匂いデータを活用することも可能です。
       </p>
+      <div class="gallery">
+        <img src="devices.jpg" alt="M5Atom Lite と ENV Pro SENSOR">
+        <img src="screenshot.png" alt="Web 可視化ページのスクリーンショット">
+      </div>
+      <p>
+        準備するもの
+        <ul>
+          <li><a href="https://www.switch-science.com/products/6262">M5Atom Lite</a></li>
+          <li><a href="https://www.switch-science.com/products/9274">ENV Pro SENSOR (BME688)</a></li>
+          <li>USB ケーブル</li>
+          <li>PC（Windows / macOS / Linux）</li>
+        </ul>
+      </p>
+
     </div>
 
     <!-- ---- Step 1: Firmware ---- -->

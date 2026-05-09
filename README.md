@@ -162,6 +162,14 @@ Then open `http://localhost:8000/viewer/` in your browser.
 
 ### Upload Firmware
 
+**Option 1: Browser-based Web Flasher (Recommended, no Arduino IDE required)**
+
+1. Connect M5Atom Lite via USB
+2. Open https://ksasao.github.io/Scent/ in your browser
+3. Use the Web Flasher to upload the firmware directly to the device
+
+**Option 2: Arduino IDE**
+
 1. Connect M5Atom Lite via USB
 2. Open `Arduino/Scent/Scent.ino` in Arduino IDE
 3. Select board: **M5Atom Lite**
@@ -169,7 +177,7 @@ Then open `http://localhost:8000/viewer/` in your browser.
 
 ### Use the Viewer
 
-1. Open `http://localhost:8000/viewer/` (or GitHub Pages version)
+1. Open https://ksasao.github.io/Scent/viewer/ in your browser (or `http://localhost:8000/viewer/` for local development)
 2. Click "Connect" and select M5Atom Lite from Web Serial port list
 3. Press "Start Session" to begin recording
 4. Data saves to browser localStorage (separate per origin)
