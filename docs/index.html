@@ -207,38 +207,34 @@
       </div>
     </div>
 
-    <!-- ---- Step 2: Desktop App ---- -->
+    <!-- ---- Step 2: Web Viewer ---- -->
     <div class="card">
       <div class="card-head">
         <span class="step-badge">2</span>
-        <h2>可視化アプリの起動</h2>
+        <h2>Web可視化ページを開く</h2>
       </div>
       <div class="card-body">
         <p>
-          Windows 11 用の可視化アプリをダウンロードし、ファームウェアを書き込んだ
-          M5Atom Lite と接続してリアルタイムグラフを確認します。
+          ブラウザのみで M5Atom Lite と通信し、リアルタイムグラフを確認します。
+          取得データはブラウザのローカルストレージへセッション単位で保存され、CSVとしてダウンロードできます。
         </p>
 
         <ol>
-          <li>下の「アプリをダウンロード」ボタンから ZIP ファイルをダウンロードする</li>
-          <li>ZIPファイルを右クリック > プロパティ > 全般タブの セキュリティ で <b>許可する</b> にチェックを入れ <b>適用</b> を押す</li>
-          <li>ZIP を任意のフォルダに展開する</li>
-          <li><code>Scent.exe</code> をダブルクリックして起動する</li>
-          <li>M5Atom Lite を USB でPCに接続する</li>
-          <li>アプリ画面の <strong>COM ポートドロップダウン</strong> から該当ポートを選択し、<strong>Connect</strong> を押す</li>
-          <li>グラフが更新され始めたら接続完了</li>
+          <li>M5Atom Lite を USB ケーブルで PC に接続する</li>
+          <li>下の「Web可視化ページを開く」をクリックする</li>
+          <li><strong>Connect</strong> を押してシリアルポートを選択する</li>
+          <li><strong>Start Session</strong> でデータ取得を開始し、必要に応じて <strong>Auto stop [s]</strong> を設定する</li>
+          <li><strong>Stop Session</strong> で終了すると1セッションとして保存される</li>
+          <li><strong>Download CSV</strong> で保存済みセッションをダウンロードする</li>
         </ol>
 
         <div class="note">
-          <strong>動作環境:</strong> Windows 11（64 bit）<br>
-          <strong>注意:</strong> セキュリティの警告が表示された場合は「詳細情報」→「実行」を選択してください。<br>
+          <strong>動作環境:</strong> Chrome / Edge / Opera（Web Serial API が必要です）<br>
+          <strong>注意:</strong> 取得データはブラウザのローカルストレージに保存されます。別ブラウザやシークレットモードでは共有されません。<br>
         </div>
 
         <br>
-        <!-- TODO: リリースページの URL に差し替えてください -->
-        <a class="cta" href="https://github.com/ksasao/Scent/raw/refs/heads/main/apps/latest/download/ScentApp_win11_v1.0.0.zip">アプリをダウンロード</a>
-        <!-- TODO: リリース一覧ページの URL に差し替えてください -->
-        <a class="cta secondary" href="https://github.com/ksasao/Scent/releases">リリース一覧</a>
+        <a class="cta" href="./viewer/" target="_blank" rel="noopener">Web可視化ページを開く</a>
       </div>
     </div>
 
