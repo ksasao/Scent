@@ -53,12 +53,40 @@ python main.py
 
 ### HTTP
 
+bridge は単なるイベントキューだけでなく、接続中 Viewer から同期された localStorage ベースのセッション状態も保持します。
+そのため `/sessions` と `/sessions/{session_id}/download` は、現在 bridge に状態同期している Viewer origin の内容を返します。
+
+例:
+- `http://localhost:8000/viewer/` が接続中なら localhost 側 localStorage のセッションを返す
+- `https://ksasao.github.io/Scent/viewer/` が接続中なら GitHub Pages 側 localStorage のセッションを返す
+
 **ヘルスチェック**
 ```
 GET /health
 ```
 
-`/health` には bridge の基本状態に加えて、現在のデバイス ID と Viewer からのデータ受信状況も含まれます。
+`/health` には bridge の基本状態に加えて、現在のデバイス ID、Viewer からのデータ受信状況、現在のセッション同期元 origin (`viewer_state_origin`) も含まれます。
+
+**Viewer 状態同期**
+```
+POST /viewer-state
+Content-Type: application/json
+
+{
+  "origin": "http://localhost:8000",
+  "page_url": "http://localhost:8000/viewer/",
+  "sessions": [
+    {
+      "id": "abc123",
+      "name": "sample",
+      "startIso": "2026-05-09T10:00:00Z",
+      "endIso": "2026-05-09T10:01:00Z",
+      "sensorId": "01B55913",
+      "records": []
+    }
+  ]
+}
+```
 
 **イベント受信**
 ```
@@ -85,10 +113,14 @@ GET /events?skip=0&limit=100
 GET /sessions
 ```
 
+現在 bridge に同期されている Viewer のセッション一覧を返します。
+
 **セッション ZIP ダウンロード**
 ```
 GET /sessions/{session_id}/download
 ```
+
+指定 `session_id` を、現在同期されている Viewer の localStorage セッション内容から ZIP 化して返します。
 
 **保留中コマンド取得**
 ```

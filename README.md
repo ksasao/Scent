@@ -4,7 +4,9 @@ Realtime gas sensing and visualization with **M5Atom Lite + ENV Pro (BME688)**.
 
 This repository contains:
 - Arduino firmware to read BME688 data (heater profile / gas index 0-9)
-- A Python app to read serial data, validate CRC, plot realtime graphs, and save CSV logs in browser or embedded desktop mode
+- A static browser viewer served from either localhost or GitHub Pages
+- A local bridge service that connects the browser viewer, MCP server, and automation tools
+- An MCP server that exposes bridge controls to VS Code / agent workflows
 
 ## Repository Layout
 
@@ -12,6 +14,11 @@ This repository contains:
 Arduino/
 	Scent/
 		Scent.ino         # M5Atom + BME688 firmware
+bridge/
+	server.py          # FastAPI bridge on localhost:8001
+	mcp_server.py      # MCP adapter on localhost:8002 or stdio
+docs/
+	viewer/            # Static Web Serial viewer (localhost or GitHub Pages)
 Python/
 	serial_plot.py      # Flask + serial reader + logger
 	templates/index.html
@@ -19,6 +26,55 @@ Python/
 	logs/               # Runtime-generated raw logs
 	data/               # Runtime-generated aggregated CSV
 ```
+
+## Current Architecture
+
+The current browser + bridge + MCP topology is shown below.
+
+```mermaid
+flowchart LR
+		D["Device<br/>M5Atom Lite + ENV Pro<br/>BME688 measurements"]
+
+		subgraph B["Browser"]
+			LV["Local Viewer<br/>localhost:8000/viewer<br/>Web Serial device control<br/>localhost localStorage sessions"]
+			GV["GitHub Pages Viewer<br/>ksasao.github.io/Scent/viewer<br/>same app, different origin<br/>GitHub Pages localStorage sessions"]
+			SR["Session source rule:<br/>Active bridge-connected viewer is session source"]
+		end
+
+		LB["Local Bridge<br/>FastAPI<br/>127.0.0.1:8001<br/>receives /event and /viewer-state<br/>exposes /sessions and ZIP download"]
+		MS["MCP Server<br/>localhost:8002 or stdio<br/>bridge_health<br/>sessions_list<br/>session_download"]
+		MC["MCP Client<br/>VS Code / Copilot Chat / Claude Desktop"]
+
+		D -->|Web Serial| LV
+		LV -->|HTTP /event, /viewer-state| LB
+		GV -.->|HTTPS page uses HTTP fallback| LB
+		LB -->|HTTP bridge API| MS
+		MS -->|MCP transport| MC
+		MS -. commands .-> LV
+```
+
+Key points:
+- The browser viewer can be served from `http://localhost:8000/viewer/` or `https://ksasao.github.io/Scent/viewer/`.
+- The device connects to the browser viewer by Web Serial, not directly to the bridge.
+- The bridge runs locally on `http://127.0.0.1:8001` and receives viewer events, commands, and viewer-state snapshots.
+- The MCP server runs on `127.0.0.1:8002` (or stdio) and talks to the bridge, not to the browser directly.
+- A session means the dataset created when the user presses `Start Session` in the viewer.
+- When the viewer is connected to the bridge, the bridge uses the currently connected viewer's localStorage-backed session list as the source for `sessions_list` and session ZIP downloads.
+
+### Port Map
+
+- `8000`: local static viewer hosting
+- `8001`: local bridge API / WebSocket endpoint
+- `8002`: MCP server
+
+### Session Source Rules
+
+- If the active viewer is `localhost:8000/viewer`, downloads come from the localhost viewer's localStorage sessions.
+- If the active viewer is GitHub Pages, downloads come from the GitHub Pages viewer's localStorage sessions.
+- Switching the active bridge-connected viewer changes which session list MCP sees.
+- The bridge reports the active source origin via `/health` as `viewer_state_origin`.
+
+For bridge-specific setup and API details, see `bridge/README.md`.
 
 ## Features
 
