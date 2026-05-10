@@ -74,7 +74,7 @@ flowchart LR
 			SR["Session source rule:<br/>Active bridge-connected viewer is session source"]
 		end
 
-		LB["Local Bridge<br/>FastAPI<br/>127.0.0.1:8001<br/>receives /event and /viewer-state<br/>exposes /sessions and ZIP download"]
+		LB["Local Bridge<br/>FastAPI<br/>localhost:8001<br/>receives /event and /viewer-state<br/>exposes /sessions and ZIP download"]
 		MS["MCP Server<br/>localhost:8002 or stdio<br/>bridge_health<br/>sessions_list<br/>session_download"]
 		MC["MCP Client<br/>VS Code / Copilot Chat / Claude Desktop"]
 

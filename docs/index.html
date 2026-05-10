@@ -171,13 +171,14 @@
     }
 
     .gallery img {
-      max-width: 100%;
+      width: 100%;
+      max-width: 420px;
       height: auto;
       border-radius: 10px;
       border: 1px solid #d6e2f0;
-      flex: 1;
+      flex: 1 1 320px;
       min-width: 280px;
-      object-fit: cover;
+      object-fit: contain;
     }
 
     .hero ul {
@@ -190,7 +191,8 @@
       }
 
       .gallery img {
-        min-width: 100%;
+        min-width: 0;
+        max-width: 100%;
       }
     }
 
