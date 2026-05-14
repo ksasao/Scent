@@ -58,6 +58,7 @@ const datasets = Array.from({ length: 10 }, (_, ch) => ({
 
 const dom = {
     connectionToggleBtn: document.getElementById("connectionToggleBtn"),
+    refreshPortsBtn: document.getElementById("refreshPortsBtn"),
     sessionToggleBtn: document.getElementById("sessionToggleBtn"),
     sessionNameInput: document.getElementById("sessionNameInput"),
     sessionSelect: document.getElementById("sessionSelect"),

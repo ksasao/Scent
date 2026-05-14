@@ -401,6 +401,9 @@ def build_session_zip_bytes(session: dict) -> tuple[bytes, str]:
     return zip_buffer.getvalue(), f"{stem}.zip"
 
 
+
+
+
 def get_device_receiving_snapshot() -> dict:
     """現在データ受信中かのスナップショットを返す"""
     now = time.time()

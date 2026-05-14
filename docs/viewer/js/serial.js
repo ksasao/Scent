@@ -45,30 +45,170 @@ function onCrcError(line) {
     }
 }
 
+// ===== COM Port Management =====
+
+const COM_PORT_STORAGE_KEY = "scent.selected.com.port.v1";
+let preferredComPort = null;
+
+async function getAvailableComPorts() {
+    try {
+        if (!navigator.serial) {
+            console.warn("Web Serial API not supported");
+            return [];
+        }
+        const ports = await navigator.serial.getPorts();
+        return ports || [];
+    } catch (err) {
+        console.warn("Failed to get available COM ports:", err);
+        return [];
+    }
+}
+
+function getPortDisplayName(port) {
+    try {
+        const info = port.getInfo ? port.getInfo() : {};
+        const usbProductId = info.usbProductId;
+        const usbVendorId = info.usbVendorId;
+
+        if (usbVendorId === 0x1a86 && usbProductId === 0x7523) {
+            return "CH340";
+        } else if (usbVendorId === 0x10c4 && usbProductId === 0xea60) {
+            return "CP2102";
+        } else if (usbVendorId === 0x0403) {
+            return "FTDI";
+        } else if (usbVendorId === 0x2e8a && usbProductId === 0x000a) {
+            return "Pico";
+        }
+        return "Unknown";
+    } catch (err) {
+        return "Unknown";
+    }
+}
+
+function saveSelectedComPort(port) {
+    try {
+        if (!port) {
+            localStorage.removeItem(COM_PORT_STORAGE_KEY);
+            return;
+        }
+        // ポートオブジェクトは JSON化できないため、識別情報を保存
+        const info = port.getInfo ? port.getInfo() : {};
+        const portData = JSON.stringify({
+            usbVendorId: info.usbVendorId,
+            usbProductId: info.usbProductId
+        });
+        localStorage.setItem(COM_PORT_STORAGE_KEY, portData);
+    } catch (err) {
+        console.warn("Failed to save selected COM port:", err);
+    }
+}
+
+function findSavedComPort(ports) {
+    try {
+        const savedData = localStorage.getItem(COM_PORT_STORAGE_KEY);
+        if (!savedData) {
+            return null;
+        }
+        const saved = JSON.parse(savedData);
+        return ports.find((port) => {
+            const info = port.getInfo ? port.getInfo() : {};
+            return info.usbVendorId === saved.usbVendorId && 
+                   info.usbProductId === saved.usbProductId;
+        });
+    } catch (err) {
+        console.warn("Failed to find saved COM port:", err);
+        return null;
+    }
+}
+
+function setPreferredComPort(port) {
+    preferredComPort = port || null;
+    if (port) {
+        saveSelectedComPort(port);
+    }
+}
+
+async function pickComPortForConnection() {
+    const grantedPorts = await getAvailableComPorts();
+    if (preferredComPort) {
+        return preferredComPort;
+    }
+    const savedPort = findSavedComPort(grantedPorts);
+    if (savedPort) {
+        return savedPort;
+    }
+    if (grantedPorts.length === 1) {
+        return grantedPorts[0];
+    }
+    // 許可済みポートが複数ある場合はユーザーに選択してもらう。
+    // requestPort は許可済みポートを選び直す用途にも使える。
+    const picked = await navigator.serial.requestPort();
+    setPreferredComPort(picked);
+    return picked;
+}
+
 async function queryDeviceIdFromDevice(timeoutMs = 6000) {
     if (!state.isConnected || !state.writer || !state.reader) {
         throw new Error("device is not connected");
     }
 
-    const previousSensorId = state.sensorId;
-    await sendCommand("id\n");
-
     const startMs = Date.now();
+    let lastRequestMs = 0;
+    const REQUEST_INTERVAL_MS = 1000; // ID要求を1秒ごとに再送信
+    const POLL_INTERVAL_MS = 50;      // ポーリング間隔を短縮（100ms → 50ms）
+
+    // ID要求を複数回送信（リトライあり）
     while (Date.now() - startMs < timeoutMs) {
-        if (state.sensorId && state.sensorId !== "-" && state.sensorId !== previousSensorId) {
-            return state.sensorId;
+        // 定期的にID要求を送信（再試行）
+        if (Date.now() - lastRequestMs > REQUEST_INTERVAL_MS) {
+            try {
+                await sendCommand("id\n");
+                lastRequestMs = Date.now();
+                console.debug("ID query sent to device");
+            } catch (err) {
+                console.warn("Failed to send ID query command", err);
+            }
         }
+
+        // ID が取得できたか確認（"-" 以外の値が存在すればOK）
         if (state.sensorId && state.sensorId !== "-") {
+            console.log(`Device ID obtained: ${state.sensorId} (${Date.now() - startMs}ms)`);
             return state.sensorId;
         }
-        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // ポーリング間隔を短縮して高速化
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     }
 
+    // タイムアウト後も最後の値をチェック
     if (state.sensorId && state.sensorId !== "-") {
+        console.warn(`Device ID obtained after timeout: ${state.sensorId} (${Date.now() - startMs}ms)`);
         return state.sensorId;
     }
 
-    throw new Error("device id query timed out");
+    throw new Error(`device id query timed out after ${Date.now() - startMs}ms (timeout=${timeoutMs}ms)`);
+}
+
+function initializeSerialPortEventListeners() {
+    /**
+     * デバイスが接続/切断された時にポート一覧を自動更新
+     * これにより、新しいデバイス接続時に自動的にドロップダウンが更新される
+     */
+    if (navigator.serial) {
+        navigator.serial.addEventListener("connect", (event) => {
+            console.log("Serial device connected");
+            void getAvailableComPorts().then((ports) => {
+                setStatus(`${ports.length} serial port(s) available`);
+            });
+        });
+
+        navigator.serial.addEventListener("disconnect", (event) => {
+            console.log("Serial device disconnected");
+            void getAvailableComPorts().then((ports) => {
+                setStatus(`${ports.length} serial port(s) available`);
+            });
+        });
+    }
 }
 
 async function connectDevice() {
@@ -77,14 +217,18 @@ async function connectDevice() {
             throw new Error("Web Serial API is not supported on this browser");
         }
 
-        // Agent 経由でも接続できるよう、許可済みポートがあれば優先して使用する
-        const grantedPorts = await navigator.serial.getPorts();
-        if (grantedPorts && grantedPorts.length > 0) {
-            state.port = grantedPorts[0];
-        } else {
-            state.port = await navigator.serial.requestPort();
+        const selectedPort = await pickComPortForConnection();
+
+        if (!selectedPort) {
+            throw new Error("No COM port selected");
         }
+
+        state.port = selectedPort;
+        setStatus("opening port...");
         await state.port.open({ baudRate: BAUD_RATE });
+        
+        // ポート選択を保存
+        saveSelectedComPort(selectedPort);
 
         state.writer = state.port.writable ? state.port.writable.getWriter() : null;
         state.reader = state.port.readable ? state.port.readable.getReader() : null;
@@ -103,6 +247,12 @@ async function connectDevice() {
         setStatus("connected");
         updateCommUi(true);
         updateButtons();
+        
+        // 接続中はRefreshボタンを無効化
+        if (dom.refreshPortsBtn) {
+            dom.refreshPortsBtn.disabled = true;
+        }
+        
         if (typeof enqueueBridgeEvent === "function") {
             enqueueBridgeEvent("device_connected", {
                 sensorId: state.sensorId,
@@ -110,15 +260,41 @@ async function connectDevice() {
             });
         }
 
-        try {
-            // Multi-cycle polling-based ID read (3 cycles x 2 seconds = up to 6 seconds)
-            const deviceId = await queryDeviceIdFromDevice();
-            console.log(`ID read successful: ${deviceId}`);
-        } catch (idErr) {
-            console.warn("ID read failed:", idErr);
-        }
+        // Start read loop immediately (important: do this before ID query)
+        // readLoop is async infinite loop, so we don't await it
+        readLoop().catch((err) => {
+            console.error("readLoop terminated unexpectedly:", err);
+        });
 
-        readLoop();
+        // Device ID 取得を段階的に試行（ネットワーク遅延対策）
+        setStatus("querying device id...");
+        let deviceId = null;
+        const idQueryAttempts = [
+            { timeout: 3000, attempt: 1 },
+            { timeout: 5000, attempt: 2 },
+            { timeout: 8000, attempt: 3 }
+        ];
+
+        for (const { timeout, attempt } of idQueryAttempts) {
+            try {
+                setStatus(`querying device id (attempt ${attempt}/${idQueryAttempts.length})...`);
+                deviceId = await queryDeviceIdFromDevice(timeout);
+                console.log(`ID read successful on attempt ${attempt}: ${deviceId}`);
+                setStatus("device id obtained");
+                break;
+            } catch (idErr) {
+                const elapsedMs = Date.now() - state.liveStartMs;
+                console.warn(`ID read attempt ${attempt} failed after ${elapsedMs}ms:`, idErr.message);
+                if (attempt === idQueryAttempts.length) {
+                    // 最終試行が失敗した場合も接続は続ける
+                    console.warn("All ID query attempts exhausted; continuing with unknown ID");
+                    setStatus("connected (device id: unknown)");
+                } else {
+                    // 次の試行前に少し待機
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                }
+            }
+        }
     } catch (err) {
         console.error(err);
         await disconnectDevice(true);
@@ -162,8 +338,15 @@ async function disconnectDevice(silent) {
     state.writer = null;
     state.port = null;
     state.isConnected = false;
+    preferredComPort = null;
     dom.latestRxLine.textContent = "-";
     updateButtons();
+    
+    // 接続解除後はRefreshボタンを有効化
+    if (dom.refreshPortsBtn) {
+        dom.refreshPortsBtn.disabled = false;
+    }
+    
     updateCommUi(false);
     if (typeof enqueueBridgeEvent === "function") {
         enqueueBridgeEvent("device_disconnected", {
