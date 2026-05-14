@@ -86,3 +86,6 @@ bridge/downloads/
 
 # Arduino build output
 Arduino/**/build/
+
+# Internal local notes and verification docs
+internal/
