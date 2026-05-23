@@ -66,6 +66,8 @@ const dom = {
     bridgeStatusText: document.getElementById("bridgeStatusText"),
     bridgeStatusDot: document.getElementById("bridgeStatusDot"),
     downloadBtn: document.getElementById("downloadBtn"),
+    uploadBtn: document.getElementById("uploadBtn"),
+    uploadZipInput: document.getElementById("uploadZipInput"),
     deleteBtn: document.getElementById("deleteBtn"),
     deleteAllBtn: document.getElementById("deleteAllBtn"),
     sensorId: document.getElementById("sensorId"),
@@ -127,6 +129,7 @@ function updateButtons() {
     dom.sessionToggleBtn.classList.toggle("warn", running);
 
     dom.downloadBtn.disabled = !hasSavedSessions;
+    dom.uploadBtn.disabled = false;
     dom.deleteBtn.disabled = !hasSavedSessions;
     dom.deleteAllBtn.disabled = !hasSavedSessions;
 }

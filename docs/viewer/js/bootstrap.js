@@ -48,6 +48,27 @@ dom.downloadBtn.addEventListener("click", async () => {
         setStatus(`download error: ${err.message || err}`);
     }
 });
+dom.uploadBtn.addEventListener("click", () => {
+    if (typeof openUploadSessionZipDialog === "function") {
+        openUploadSessionZipDialog();
+    }
+});
+dom.uploadZipInput.addEventListener("change", async (event) => {
+    const file = event.target && event.target.files ? event.target.files[0] : null;
+    if (!file) {
+        return;
+    }
+
+    try {
+        await importSessionZip(file);
+    } catch (err) {
+        console.error(err);
+        setStatus(`upload error: ${err.message || err}`);
+        alert(`Upload failed: ${err.message || err}`);
+    } finally {
+        event.target.value = "";
+    }
+});
 dom.deleteBtn.addEventListener("click", deleteSelectedSession);
 dom.deleteAllBtn.addEventListener("click", deleteAllSessions);
 dom.sessionSelect.addEventListener("change", onSessionSelectChanged);
